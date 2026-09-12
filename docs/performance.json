@@ -1,0 +1,37 @@
+{
+  "fixtureFiles": 4000,
+  "baseline": {
+    "durationMs": 1401,
+    "cpuMs": 1156,
+    "peakProcessRssMB": 60,
+    "files": 4000,
+    "dbPath": "C:\\Users\\sishp\\AppData\\Local\\Temp\\blockit-perf-BlI5Ap\\a43bfe69-e409-4c94-8dc9-fab9885ab910.db"
+  },
+  "current": {
+    "durationMs": 1658,
+    "cpuMs": 1297,
+    "peakProcessRssMB": 62,
+    "files": 4000,
+    "dbPath": "C:\\Users\\sishp\\AppData\\Local\\Temp\\blockit-perf-BlI5Ap\\375a052b-3316-4f80-bcc0-e7db95ea471b.db"
+  },
+  "controls": {
+    "durationMs": 850,
+    "cpuMs": 453,
+    "peakProcessRssMB": 61,
+    "files": 1900,
+    "dbPath": "C:\\Users\\sishp\\AppData\\Local\\Temp\\blockit-perf-BlI5Ap\\cb7bb115-1c30-4c73-84ab-e01c9e968f69.db"
+  },
+  "summary": {
+    "rows": 200000,
+    "iterations": 20,
+    "legacyMs": 2384.69,
+    "incrementalMs": 0.26
+  },
+  "queryChecks": {
+    "treemapRows": 181,
+    "searchRows": 50,
+    "matchingRows": 200000,
+    "hostHeartbeatTicks": 42
+  },
+  "note": "Local generated metadata benchmark; not a whole-drive throughput or laptop resource guarantee."
+}

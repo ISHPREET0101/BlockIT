@@ -1,0 +1,83 @@
+{
+  "name": "blockit-storage-explorer",
+  "version": "1.5.0",
+  "description": "A friendly, private Windows storage explorer.",
+  "main": "dist-electron/main.js",
+  "author": "BlockIT",
+  "license": "MIT",
+  "scripts": {
+    "dev": "npm run build:main && concurrently -k \"vite\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
+    "build:main": "tsup electron/main.ts electron/preload.ts electron/scanner-worker.ts electron/query-worker.ts --format cjs --platform node --target node20 --out-dir dist-electron --external electron --external better-sqlite3",
+    "build:renderer": "vite build",
+    "build": "npm run typecheck && npm run build:main && npm run build:renderer",
+    "generate:icon": "node scripts/generate-icon.cjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit --noUnusedLocals --noUnusedParameters",
+    "test": "vitest run",
+    "test:scanner": "npm run build:main && cross-env ELECTRON_RUN_AS_NODE=1 electron scripts/smoke-scanner.cjs",
+    "test:regression": "cross-env ELECTRON_RUN_AS_NODE=1 electron scripts/regression-check.cjs",
+    "test:performance": "cross-env ELECTRON_RUN_AS_NODE=1 electron scripts/performance-check.cjs",
+    "test:ui": "electron scripts/smoke-ui.cjs && electron scripts/smoke-treemap.cjs && electron scripts/smoke-actions.cjs",
+    "test:watch": "vitest",
+    "package:win": "npm run generate:icon && npm run build && electron-builder --win nsis portable --x64",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.2.0",
+    "d3-hierarchy": "^3.1.2",
+    "lucide-react": "^0.468.0",
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/d3-hierarchy": "^3.1.7",
+    "@types/node": "^22.10.2",
+    "@types/react": "^19.0.3",
+    "@types/react-dom": "^19.0.2",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.0",
+    "cross-env": "^7.0.3",
+    "electron": "^37.2.6",
+    "electron-builder": "^26.0.12",
+    "jsdom": "^25.0.1",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.5",
+    "vitest": "^3.2.4",
+    "wait-on": "^8.0.1"
+  },
+  "build": {
+    "directories": { "output": "release" },
+    "appId": "com.blockit.storageexplorer",
+    "productName": "BlockIT",
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/better-sqlite3/**/*"
+    ],
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "node_modules/**/*",
+      "package.json"
+    ],
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "artifactName": "BlockIT-${version}-${arch}.${ext}"
+    },
+    "nsis": {
+      "artifactName": "BlockIT-Setup-${version}-${arch}.${ext}",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "portable": {
+      "artifactName": "BlockIT-Portable-${version}-${arch}.${ext}"
+    }
+  }
+}

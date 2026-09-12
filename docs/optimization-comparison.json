@@ -1,0 +1,35 @@
+{
+  "baseline": "Packaged 1.4.0",
+  "current": "1.5.0 candidate",
+  "fixtureFiles": 4000,
+  "scanMs": {
+    "before": [
+      1682,
+      1696,
+      1740
+    ],
+    "after": [
+      1300,
+      1293,
+      1301
+    ],
+    "beforeMedian": 1696,
+    "afterMedian": 1300
+  },
+  "pages20Ms": {
+    "rows": 200000,
+    "before": [
+      6879.1,
+      6845.5,
+      6868.4
+    ],
+    "after": [
+      18.8,
+      21,
+      22.4
+    ],
+    "beforeMedian": 6868.4,
+    "afterMedian": 21
+  },
+  "note": "Three paired local trials with generated data; cached filesystem, no whole-drive or laptop-wide guarantee."
+}
