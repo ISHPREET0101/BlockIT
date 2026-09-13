@@ -9,14 +9,17 @@ async function scan(workerPath,root,base,control=false) {
   const scanId=randomUUID(),dbPath=path.join(base,scanId+'.db');
   const started=performance.now(),cpu=process.cpuUsage();
   const worker=new Worker(workerPath,{workerData:{scanId,root,dbPath,volumeTotalBytes:1e9,volumeFreeBytes:1e8,clusterSize:4096,excludedPaths:[]}});
-  let peakRss=0,pauseRequested=false,resumeSent=false,pausedAt=0,pauseMs=0,stopAt=0;
+  let peakRss=0,pauseRequested=false,resumeSent=false,resumeRequested=false,pausedAt=0,pauseMs=0,stopAt=0;
   const sampling=setInterval(()=>{peakRss=Math.max(peakRss,process.memoryUsage().rss);},50);
   const result=await new Promise((resolve,reject)=>{
     worker.on('error',reject);
     worker.on('message',message=>{
       if(message.type==='error') reject(new Error(message.message));
       if(control && message.type==='progress') {
-        if(!pauseRequested&&message.progress.files>=128) {pauseRequested=true;worker.postMessage({type:'pause'});}
+        // Fast scans can finish before the second throttled progress update.
+        // The first indexed entry may be a folder. Do not wait for a file count
+        // threshold that a small fast scan only reports at completion.
+        if(!pauseRequested&&message.progress.status==='scanning'&&!message.progress.message) {pauseRequested=true;worker.postMessage({type:'pause'});}
         if(message.progress.status==='paused'&&!resumeSent) {
           resumeSent=true;pausedAt=Date.now();
           setTimeout(()=>{
@@ -26,10 +29,12 @@ async function scan(workerPath,root,base,control=false) {
               const next=new Database(dbPath,{readonly:true});
               const after=next.prepare("SELECT COUNT(*) n FROM nodes").get().n;next.close();
               try{assert.equal(after,before,'Paused scanner does no more indexing');}catch(error){reject(error);}
-              pauseMs=Date.now()-pausedAt;worker.postMessage({type:'resume'});
-              setTimeout(()=>{stopAt=Date.now();worker.postMessage({type:'cancel'});},100);
+              pauseMs=Date.now()-pausedAt;resumeRequested=true;worker.postMessage({type:'resume'});
             },250);
           },100);
+        }
+        if(resumeRequested&&!stopAt&&message.progress.status==='scanning') {
+          stopAt=Date.now();worker.postMessage({type:'cancel'});
         }
       }
       if(message.type==='done') resolve(message);
@@ -37,6 +42,7 @@ async function scan(workerPath,root,base,control=false) {
   });
   await new Promise(resolve=>worker.once('exit',resolve));
   clearInterval(sampling);
+  const cancelLatencyMs=control?Date.now()-stopAt:undefined;
   const cpuUsed=process.cpuUsage(cpu);
   const db=new Database(dbPath,{readonly:true});
   const run=db.prepare('SELECT * FROM scan_runs').get();
@@ -52,9 +58,9 @@ async function scan(workerPath,root,base,control=false) {
       FROM nodes WHERE id IN (SELECT id FROM descendants)`).get(folder.id);
     assert.equal(folder.size,expected.size);assert.equal(folder.file_count,expected.files);
   }
-  if(control) {assert(resumeSent,'Pause acknowledged');assert.equal(result.status,'idle');assert(Date.now()-stopAt<3000,'Cancel drains promptly');}
+  if(control) {assert(resumeSent,'Pause acknowledged');assert(run.file_count>0,'Cancellation preserves partial file results');assert.equal(result.status,'idle');assert(Date.now()-stopAt<3000,'Cancel drains promptly');}
   db.close();
-  return {durationMs:Math.round(performance.now()-started-pauseMs),cpuMs:Math.round((cpuUsed.user+cpuUsed.system)/1000),peakProcessRssMB:Math.round(peakRss/1024**2),files:run.file_count,dbPath};
+  return {durationMs:Math.round(performance.now()-started-pauseMs),cpuMs:Math.round((cpuUsed.user+cpuUsed.system)/1000),peakProcessRssMB:Math.round(peakRss/1024**2),files:run.file_count,cancelLatencyMs,dbPath};
 }
 async function main() {
   const base=await fs.mkdtemp(path.join(os.tmpdir(),'blockit-perf-'));
@@ -70,14 +76,18 @@ async function main() {
   const baseline=await scan(path.join(__dirname,'baseline-scanner.cjs'),root,base);
   const current=await scan(path.join(__dirname,'../dist-electron/scanner-worker.js'),root,base);
   assert.equal(current.files,4000);assert.equal(current.files,baseline.files);
-  const controls=await scan(path.join(__dirname,'../dist-electron/scanner-worker.js'),root,base,true);
+  // A broad folder makes the first progress update contain files, so Stop is
+  // tested against actual partial file results, not only an empty folder tree.
+  const controlRoot=path.join(base,'control-fixture');await fs.mkdir(controlRoot);
+  for(let batch=0;batch<400;batch++)await Promise.all(Array.from({length:100},(_,i)=>fs.writeFile(path.join(controlRoot,'file-'+(batch*100+i)+'.txt'),'sample')));
+  const controls=await scan(path.join(__dirname,'../dist-electron/scanner-worker.js'),controlRoot,base,true);
   const db=new Database(current.dbPath);
   // Expand only generated metadata for a 200k-row repeated-summary benchmark.
   db.exec("DELETE FROM nodes; DELETE FROM aggregates;");
   const scanId=db.prepare('SELECT id FROM scan_runs').get().id;
-  const rootId=Number(db.prepare("INSERT INTO nodes(scan_id,parent_id,name,path,kind,size) VALUES (?,NULL,'root','root','folder',20000000)").run(scanId).lastInsertRowid);
-  const insert=db.prepare("INSERT INTO nodes(scan_id,parent_id,name,path,kind,extension,category,size,allocated_size) VALUES (?,?,'sample','sample','file',?,'Documents',100,4096)");
-  db.transaction(()=>{for(let i=0;i<200000;i++) insert.run(scanId,rootId,'ext'+(i%20));})();
+  const rootId=Number(db.prepare("INSERT INTO nodes(parent_id,name,path,kind,size) VALUES (NULL,'root','root','folder',20000000)").run().lastInsertRowid);
+  const insert=db.prepare("INSERT INTO nodes(parent_id,name,path,kind,extension,category,size,allocated_size) VALUES (?,'sample','sample','file',?,'Documents',100,4096)");
+  db.transaction(()=>{for(let i=0;i<200000;i++) insert.run(rootId,'ext'+(i%20));})();
   db.exec("INSERT INTO aggregates SELECT 'category',category,SUM(size),SUM(allocated_size),COUNT(*) FROM nodes WHERE kind='file' GROUP BY category; INSERT INTO aggregates SELECT 'extension',extension,SUM(size),SUM(allocated_size),COUNT(*) FROM nodes WHERE kind='file' GROUP BY extension;");
   const legacy=db.prepare("SELECT category,SUM(size),SUM(allocated_size),COUNT(*) FROM nodes WHERE kind='file' GROUP BY category");
   const optimized=db.prepare("SELECT name,size,allocatedSize,count FROM aggregates WHERE dimension='category'");
@@ -106,7 +116,7 @@ async function main() {
   assert.equal(overview.categories[0].size,20000000);
   clearInterval(heartbeat);await queryWorker.terminate();
   assert(ticks>1,'Host event loop stays responsive while worker queries execute');
-  const report={fixtureFiles:4000,baseline,current,controls,summary,queryChecks:{treemapRows:tree.length,searchRows:result.items.length,matchingRows:result.total,hostHeartbeatTicks:ticks},note:'Local generated metadata benchmark; not a whole-drive throughput or laptop resource guarantee.'};
+  const report={fixtureFiles:4000,baseline,current,controls,summary,queryChecks:{treemapRows:tree.length,searchRows:result.items.length,matchingRows:result.total,hostHeartbeatTicks:ticks},note:'Local generated metadata benchmark; not a whole-drive throughput or laptop resource guarantee. CPU and RSS measure the Electron test host only, excluding the native helper; do not use them as a whole-app resource comparison.'};
   await fs.mkdir(path.join(__dirname,'../docs'),{recursive:true});
   await fs.writeFile(path.join(__dirname,'../docs/performance.json'),JSON.stringify(report,null,2));
   console.log(JSON.stringify(report,null,2));

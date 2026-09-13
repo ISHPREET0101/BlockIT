@@ -9,6 +9,7 @@ import { setPriority, constants as osConstants } from 'node:os';
 import { mapNode } from './queries';
 import { defaultSettings, settingsPatch, scanIdentifier, nodeIdentifier, validateQuery } from '../src/shared/validation';
 import { insideRoot, validateLivePath } from './path-safety';
+import { NativeDirectoryReader } from './native-directory';
 import Database from 'better-sqlite3';
 import type {
   ActionResult,
@@ -68,6 +69,50 @@ function settingsPath(): string {
 function databasePath(scanId: string): string {
   scanIdentifier(scanId);
   return path.join(scanDirectory(), `${scanId}.db`);
+}
+
+function helperPath(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'blockit-enumerator.exe')
+    : path.join(__dirname, '../build/native/blockit-enumerator.exe');
+}
+
+// Ask the helper whether the process can open the volume directly; that is
+// exactly the capability the fast MFT scan needs, so no other elevation check
+// is required. Cached per drive for the session.
+const volumeProbes = new Map<string, { admin: boolean; ntfs: boolean }>();
+async function probeVolume(root: string): Promise<{ admin: boolean; ntfs: boolean }> {
+  const drive = root.slice(0, 2).toLowerCase();
+  const cached = volumeProbes.get(drive);
+  if (cached) return cached;
+  const reader = new NativeDirectoryReader(helperPath());
+  try {
+    await reader.ready;
+    const result = await reader.probeVolume(root);
+    volumeProbes.set(drive, result);
+    return result;
+  } finally { reader.close(); }
+}
+
+// Relaunch through UAC with the scan root handed over; the elevated instance
+// starts the scan itself (scan:launch-target).
+async function relaunchElevated(rootPath: string): Promise<void> {
+  const encoded = Buffer.from(rootPath, 'utf8').toString('base64url');
+  const executable = process.execPath.replace(/'/g, "''");
+  const appPath = app.getAppPath().replace(/'/g, "''");
+  const launchArguments = app.isPackaged
+    ? `'--scan-root-base64=${encoded}'`
+    : `'${appPath}','--scan-root-base64=${encoded}'`;
+  const script = `$ErrorActionPreference='Stop'; Start-Process -FilePath '${executable}' -Verb RunAs -ArgumentList ${launchArguments}`;
+  // The elevated app must acquire its own lock. Keep this window alive if UAC is cancelled.
+  app.releaseSingleInstanceLock();
+  try {
+    await execFileAsync('powershell.exe',['-NoProfile','-NonInteractive','-Command',script],{windowsHide:true});
+    app.quit();
+  } catch (error) {
+    if(!app.hasSingleInstanceLock()) app.requestSingleInstanceLock();
+    throw error;
+  }
 }
 
 async function readSettings(): Promise<AppSettings> {
@@ -176,6 +221,25 @@ async function startScan(rootInput: string): Promise<{ scanId: string }> {
   const root = path.resolve(rootInput);
   const stat = await fs.lstat(root);
   if (!stat.isDirectory()||stat.isSymbolicLink()) throw new Error('Choose a real folder or drive to scan, not a shortcut or junction.');
+  // Whole-drive scans get one chance at the fast MFT engine, which needs
+  // administrator rights; offering it up front beats a slow scan by default.
+  // Cancelling UAC simply continues with the standard scan.
+  if (process.platform === 'win32' && /^[a-zA-Z]:\\?$/i.test(root) && mainWindow) {
+    let probe: { admin: boolean; ntfs: boolean };
+    try { probe = await probeVolume(root); } catch { probe = { admin: false, ntfs: false }; }
+    if (!probe.admin && probe.ntfs) {
+      const choice = await dialog.showMessageBox(mainWindow, {
+        type: 'question', buttons: ['Restart as administrator', 'Scan without elevation'], defaultId: 0, cancelId: 1,
+        title: 'Fast drive scan available',
+        message: 'Scan this drive much faster as administrator?',
+        detail: 'Administrator rights let BlockIT read the drive index (MFT) directly — typically several times faster for a whole drive, and the only way to finish large drives quickly. Without them the scan uses the standard directory method.',
+      });
+      if (choice.response === 0) {
+        try { await relaunchElevated(root); return { scanId: '' }; }
+        catch { /* UAC declined or failed: scan without elevation below. */ }
+      }
+    }
+  }
   const volume = await fs.statfs(root);
   const scanId = randomUUID();
   await fs.mkdir(scanDirectory(), { recursive: true });
@@ -188,6 +252,7 @@ async function startScan(rootInput: string): Promise<{ scanId: string }> {
       volumeFreeBytes: Number(volume.bavail) * Number(volume.bsize),
       clusterSize: Number(volume.bsize) || 4096,
       excludedPaths: [scanDirectory()],
+      nativeHelperPath: app.isPackaged ? path.join(process.resourcesPath, 'blockit-enumerator.exe') : undefined,
     },
   });
   activeWorkers.set(scanId, worker);
@@ -220,7 +285,7 @@ function resolveNode(scanId: string, nodeId: number, writable = false): { db: Da
   nodeIdentifier(nodeId);
   const db = openDatabase(scanId, !writable);
   try {
-  const row = db.prepare('SELECT * FROM nodes WHERE scan_id = ? AND id = ?').get(scanId, nodeId) as Record<string, unknown> | undefined;
+  const row = db.prepare('SELECT * FROM nodes WHERE id = ?').get(nodeId) as Record<string, unknown> | undefined;
   const run = db.prepare('SELECT root_path FROM scan_runs WHERE id = ?').get(scanId) as { root_path: string } | undefined;
   if (!row || !run) {
     db.close();
@@ -381,20 +446,9 @@ function registerIpc(): void {
       const run = db.prepare('SELECT root_path FROM scan_runs WHERE id = ?').get(scanId) as { root_path: string } | undefined;
       db.close();
       if (!run) throw new Error('Scan not found.');
-      const encoded = Buffer.from(run.root_path, 'utf8').toString('base64url');
-      const executable = process.execPath.replace(/'/g, "''");
-      const appPath = app.getAppPath().replace(/'/g, "''");
-      const launchArguments = app.isPackaged
-        ? `'--scan-root-base64=${encoded}'`
-        : `'${appPath}','--scan-root-base64=${encoded}'`;
-      const script = `$ErrorActionPreference='Stop'; Start-Process -FilePath '${executable}' -Verb RunAs -ArgumentList ${launchArguments}`;
-      // The elevated app must acquire its own lock. Keep this window alive if UAC is cancelled.
-      app.releaseSingleInstanceLock();
-      await execFileAsync('powershell.exe',['-NoProfile','-NonInteractive','-Command',script],{windowsHide:true});
-      app.quit();
+      await relaunchElevated(run.root_path);
       return { ok: true };
     } catch (error) {
-      if(!app.hasSingleInstanceLock()) app.requestSingleInstanceLock();
       return { ok: false, message: error instanceof Error ? error.message : String(error) };
     } finally {elevating=false;}
   });

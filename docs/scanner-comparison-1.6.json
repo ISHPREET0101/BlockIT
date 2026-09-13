@@ -1,0 +1,38 @@
+{
+  "baseline": "Packaged 1.5.0",
+  "current": "1.6.0 candidate",
+  "fixtureFiles": 20000,
+  "scanMs": {
+    "before": [
+      {
+        "ms": 4480,
+        "maxHeartbeatGapMs": 20
+      },
+      {
+        "ms": 4460,
+        "maxHeartbeatGapMs": 18
+      },
+      {
+        "ms": 5092,
+        "maxHeartbeatGapMs": 25
+      }
+    ],
+    "after": [
+      {
+        "ms": 1772,
+        "maxHeartbeatGapMs": 19
+      },
+      {
+        "ms": 1733,
+        "maxHeartbeatGapMs": 17
+      },
+      {
+        "ms": 2294,
+        "maxHeartbeatGapMs": 20
+      }
+    ],
+    "beforeMedian": 4480,
+    "afterMedian": 1772
+  },
+  "note": "Three alternating paired local trials, generated tiny files, warm filesystem cache, helper startup included. Heartbeat is the test host, not laptop-wide responsiveness. No whole-drive, HDD, network or cold-cache guarantee."
+}
