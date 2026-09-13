@@ -71,7 +71,7 @@ Run `npx cross-env ELECTRON_RUN_AS_NODE=1 electron scripts/performance-check.cjs
 Version 1.2 introduces a calmer sage-and-cream light theme (default for new profiles), softer dark colours, larger type, fewer decorative labels, and summary cards limited to Overview. Existing theme preferences are preserved; use the sun/moon control to switch themes.
 
 - Search across all indexed folders with a short debounce to keep typing responsive.
-- Select files for a details panel showing size, estimated disk use, dates, and location.
+- Select files for a details panel showing sizes, estimated disk use, dates, and location.
 - Folder navigation is preserved during background scan updates.
 - Recycle actions use native confirmation, reject actions during scanning, and update the writable index.
 - Clear completion/cancellation/error status and persistent result counts.
