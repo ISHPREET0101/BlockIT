@@ -394,7 +394,9 @@ async function nativeEnumerate(lane:Lane,job:LaneJob,acc:FolderAcc,volume=false)
       const openStart = performance.now();
       batch = volume && first
         ? await reader.readVolume(job.path, excluded)
-        : await reader.read(opened?job.path:undefined, excluded);
+        : volume
+          ? await reader.readVolumeNext()
+          : await reader.read(opened?job.path:undefined, excluded);
       if(opened && !volume) noteLatency(performance.now()-openStart);
     } catch(error) {
       // The reader is dead; later folders on this lane use compatibility
@@ -649,6 +651,11 @@ async function run() {
   }
   if(!volumeOk) stack.push(rootId);
   await Promise.all(lanes.map((_,i)=>laneLoop(i)));
+  // The volume path enumerates through one direct call instead of
+  // processDirectory, so the tail of the queued file rows needs its own flush
+  // before finalisation. Without it the last (up to INSERT_CHUNK-1) file rows
+  // are counted into the run totals and folder roll-ups but never inserted.
+  flushBatch();
   enumWallEnd = performance.now();
   if(cancelled||directAcc.size||childTotals.size) await drainPartial();
   commit(true);

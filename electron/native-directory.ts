@@ -101,6 +101,22 @@ export class NativeDirectoryReader {
       this.child.stdin.write(JSON.stringify({op:'volume',path:directory,x:exclude??[]}) + '\n');
     });
   }
+  // Continuation of a volume walk: the helper routes a bare "next" to the
+  // volume writer while a volume walk is active, so batches keep streaming
+  // until done. Batches are already parsed, so the standard bound applies.
+  async readVolumeNext(): Promise<Batch> {
+    await this.ready;
+    if (this.failure) throw this.failure;
+    if (this.pending) throw new Error('Native reader is already busy.');
+    return new Promise<Batch>((resolve, reject) => {
+      const timeout = setTimeout(() => this.fail(new NativeDirectoryTimeoutError()), 30000);
+      this.pending = {
+        resolve: value => { clearTimeout(timeout); resolve(value as Batch); },
+        reject: error => { clearTimeout(timeout); reject(error); },
+      };
+      this.child.stdin.write(JSON.stringify({op:'next'}) + '\n');
+    });
+  }
   // Cheap elevation/filesystem probe used before starting a drive scan; never
   // changes scan state, so the same reader can serve a scan afterwards.
   async probeVolume(directory: string): Promise<{admin: boolean; ntfs: boolean}> {

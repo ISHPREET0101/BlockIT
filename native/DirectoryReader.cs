@@ -1042,7 +1042,11 @@ internal static class DirectoryReader
                     continue;
                 }
                 if (op != "open" && op != "next" && op != "volume") throw new InvalidOperationException("Unknown request");
-                volumeRequest = op == "volume";
+                // A "volume" request starts a volume walk that "next" continues until done;
+                // any "open" returns to the directory-walk engine. Routing "next" by this
+                // persistent flag keeps volume continuations off the walk writer.
+                bool startsVolume = op == "volume";
+                volumeRequest = startsVolume || (op == "next" && volumeRequest);
                 Interlocked.Exchange(ref requestStarted, Stopwatch.GetTimestamp());
                 var excludeList = new List<string>();
                 if (request.ContainsKey("x"))
@@ -1052,7 +1056,7 @@ internal static class DirectoryReader
                     var rawList = request["x"] as System.Collections.IEnumerable;
                     if (rawList != null) foreach (object item in rawList) excludeList.Add(Convert.ToString(item));
                 }
-                if (volumeRequest) WriteVolumeBatch(Convert.ToString(request["path"]), excludeList);
+                if (volumeRequest) WriteVolumeBatch(startsVolume ? Convert.ToString(request["path"]) : null, excludeList);
                 else WriteBatch(op == "open" ? Convert.ToString(request["path"]) : null, excludeList);
                 Interlocked.Exchange(ref requestStarted, 0);
             }
