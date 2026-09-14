@@ -389,7 +389,13 @@ function App() {
 
             {view === 'treemap' && settings.showTreemap && !debouncedSearch.trim() && (
               <TreemapView depth={mapDepth} onDepthChange={setMapDepth} nodes={displayedTreemapNodes} title={breadcrumbs.at(-1)?.name || summary?.label || 'Storage'} settings={settings}
-                canReset={breadcrumbs.length > 1} onOpen={onMapOpen} onReset={onMapReset} onExport={onMapExport} />
+                canReset={breadcrumbs.length > 1} onOpen={onMapOpen} onReset={onMapReset} onExport={onMapExport} onCopyPath={async node=>{
+                  if(!scanId || node.synthetic) return;
+                  try {
+                    const result=await window.blockit.actions.copyPath(scanId,node.id);
+                    showResult({...result,message:result.ok?'Path copied.':result.message});
+                  } catch { showResult({ok:false,message:'Could not copy the path. Please try again.'}); }
+                }} />
             )}
 
             {query && (

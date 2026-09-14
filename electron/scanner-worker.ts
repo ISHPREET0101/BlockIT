@@ -385,6 +385,7 @@ async function nativeEnumerate(lane:Lane,job:LaneJob,acc:FolderAcc,volume=false)
   const walk=new Map<number,WalkNode>([[0,{id:job.id,path:job.path,name:path.basename(job.path)||job.path,acc}]]);
   let first = true;
   let emitted=false;
+  let prefetched: ReturnType<NativeDirectoryReader["read"]> | undefined;
   while(!cancelled) {
     if(paused) await breathe();
     if(cancelled) { completeWalk(walk); return 'done'; }
@@ -392,11 +393,12 @@ async function nativeEnumerate(lane:Lane,job:LaneJob,acc:FolderAcc,volume=false)
     try {
       const opened = first;
       const openStart = performance.now();
-      batch = volume && first
+      batch = prefetched ? await prefetched : volume && first
         ? await reader.readVolume(job.path, excluded)
         : volume
           ? await reader.readVolumeNext()
           : await reader.read(opened?job.path:undefined, excluded);
+      prefetched=undefined;
       if(opened && !volume) noteLatency(performance.now()-openStart);
     } catch(error) {
       // The reader is dead; later folders on this lane use compatibility
@@ -436,6 +438,13 @@ async function nativeEnumerate(lane:Lane,job:LaneJob,acc:FolderAcc,volume=false)
         }
         acc.modifiedAt=stat.mtimeMs;
       }
+    }
+    // Keep at most one batch ahead: native enumeration/serialization overlaps
+    // SQLite writes, without an unbounded queue or changing record order.
+    if(!batch.done && !batch.error && !cancelled && !paused) {
+      prefetched=volume?reader.readVolumeNext():reader.read();
+      // Pause/cancel can close the reader before the next await consumes it.
+      prefetched.catch(()=>{});
     }
     for(const dir of batch.dirs??[]) {
       const parent=walk.get(dir.p);

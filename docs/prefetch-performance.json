@@ -1,0 +1,80 @@
+{
+  "fixtureFiles": 120000,
+  "before": [
+    {
+      "ms": 1959,
+      "lanes": 1,
+      "files": 120000,
+      "bytes": 840000,
+      "hash": "557c700a14b70d837e3ad3e3fd7ad3ade1dbc70456ced9b22919b8a4ff2e07d3"
+    },
+    {
+      "ms": 1748,
+      "lanes": 1,
+      "files": 120000,
+      "bytes": 840000,
+      "hash": "557c700a14b70d837e3ad3e3fd7ad3ade1dbc70456ced9b22919b8a4ff2e07d3"
+    },
+    {
+      "ms": 1722,
+      "lanes": 1,
+      "files": 120000,
+      "bytes": 840000,
+      "hash": "557c700a14b70d837e3ad3e3fd7ad3ade1dbc70456ced9b22919b8a4ff2e07d3"
+    },
+    {
+      "ms": 1746,
+      "lanes": 1,
+      "files": 120000,
+      "bytes": 840000,
+      "hash": "557c700a14b70d837e3ad3e3fd7ad3ade1dbc70456ced9b22919b8a4ff2e07d3"
+    },
+    {
+      "ms": 1688,
+      "lanes": 1,
+      "files": 120000,
+      "bytes": 840000,
+      "hash": "557c700a14b70d837e3ad3e3fd7ad3ade1dbc70456ced9b22919b8a4ff2e07d3"
+    }
+  ],
+  "after": [
+    {
+      "ms": 1543,
+      "lanes": 1,
+      "files": 120000,
+      "bytes": 840000,
+      "hash": "557c700a14b70d837e3ad3e3fd7ad3ade1dbc70456ced9b22919b8a4ff2e07d3"
+    },
+    {
+      "ms": 1497,
+      "lanes": 1,
+      "files": 120000,
+      "bytes": 840000,
+      "hash": "557c700a14b70d837e3ad3e3fd7ad3ade1dbc70456ced9b22919b8a4ff2e07d3"
+    },
+    {
+      "ms": 1481,
+      "lanes": 1,
+      "files": 120000,
+      "bytes": 840000,
+      "hash": "557c700a14b70d837e3ad3e3fd7ad3ade1dbc70456ced9b22919b8a4ff2e07d3"
+    },
+    {
+      "ms": 1470,
+      "lanes": 1,
+      "files": 120000,
+      "bytes": 840000,
+      "hash": "557c700a14b70d837e3ad3e3fd7ad3ade1dbc70456ced9b22919b8a4ff2e07d3"
+    },
+    {
+      "ms": 1473,
+      "lanes": 1,
+      "files": 120000,
+      "bytes": 840000,
+      "hash": "557c700a14b70d837e3ad3e3fd7ad3ade1dbc70456ced9b22919b8a4ff2e07d3"
+    }
+  ],
+  "beforeMedianMs": 1746,
+  "afterMedianMs": 1481,
+  "note": "Synthetic NTFS image on this machine; not a real whole-drive speed guarantee."
+}

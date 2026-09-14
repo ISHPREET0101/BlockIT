@@ -1,6 +1,6 @@
 import { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { hierarchy, treemap } from 'd3-hierarchy';
-import { Download, Focus, RotateCcw, Search, ArrowUpRight, Layers, SlidersHorizontal } from 'lucide-react';
+import { Download, Focus, RotateCcw, Search, ArrowUpRight, Layers, SlidersHorizontal, Copy } from 'lucide-react';
 import { formatBytes } from '../shared/format';
 import { blockColor, readableText, adjacentColors, flattenNodes, metricColor, sizeColors, ageColors, levelColors, blockPalette, type ColorMode } from '../shared/treemap';
 import { categoryColors } from '../shared/categories';
@@ -14,12 +14,13 @@ interface TreemapProps {
   settings: AppSettings;
   canReset: boolean;
   onOpen(node: TreemapNode): void;
+  onCopyPath(node: TreemapNode): Promise<void>;
   onReset(): void;
   onExport(dataUrl: string): Promise<void>;
 }
 interface LayoutDatum { node?: TreemapNode; children?: LayoutDatum[]; }
 
-export const TreemapView = memo(function TreemapView({ depth, onDepthChange, nodes, title, settings, canReset, onOpen, onReset, onExport }: TreemapProps) {
+export const TreemapView = memo(function TreemapView({ depth, onDepthChange, nodes, title, settings, canReset, onOpen, onReset, onExport, onCopyPath }: TreemapProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const instance = useId().replace(/:/g,'');
   const [activeId, setActiveId] = useState<number | null>(null);
@@ -129,8 +130,8 @@ export const TreemapView = memo(function TreemapView({ depth, onDepthChange, nod
               aria-label={node.name+', '+formatBytes(sizeOf(node),settings.unit)+', '+share(node)+' of displayed space. '+hint}
               tabIndex={0} data-node-id={node.id} data-kind={free?'free':node.kind}
               opacity={matches(node)?1:.22} className="treemap-cell"
-              onMouseEnter={()=>setActiveId(node.id)} onMouseLeave={()=>setActiveId(null)}
-              onFocus={()=>setActiveId(node.id)} onBlur={()=>setActiveId(null)}
+              onMouseEnter={()=>setActiveId(node.id)}
+              onFocus={()=>setActiveId(node.id)}
               onClick={()=>activate(node)}
               onKeyDown={event=>{
                 if(event.key==='Enter'||event.key===' ') {event.preventDefault();activate(node);}
@@ -156,7 +157,7 @@ export const TreemapView = memo(function TreemapView({ depth, onDepthChange, nod
         </svg>
       </div>}
     <div className="map-details" aria-live="polite" aria-atomic="true">
-      {active ? <><i style={{background:colorOf(active)}}/><strong>{active.name}</strong><span>{formatBytes(sizeOf(active),settings.unit)} · {share(active)} of displayed space</span><span className="map-caption">{active.syntheticKind==='free'?'Free space':active.synthetic?'Grouped items':active.kind==='folder'?active.fileCount.toLocaleString()+' files · '+active.folderCount.toLocaleString()+' folders':active.category}</span>{!active.synthetic && active.path && <span className="map-path" title={active.path}>{active.path}</span>}</> :
+      {active ? <><i style={{background:colorOf(active)}}/><strong>{active.name}</strong><span>{formatBytes(sizeOf(active),settings.unit)} · {share(active)} of displayed space</span><span className="map-caption">{active.syntheticKind==='free'?'Free space':active.synthetic?'Grouped items':active.kind==='folder'?active.fileCount.toLocaleString()+' files · '+active.folderCount.toLocaleString()+' folders':active.category}</span>{!active.synthetic && active.path && <div className="map-path-row"><span className="map-path" title={active.path}>{active.path}</span><button className="ghost-button map-copy-path" onClick={()=>void onCopyPath(active)} aria-label="Copy displayed path"><Copy size={15}/> Copy path</button></div>}</> :
       <span className="map-caption">Hover or focus a block for details. Use arrow keys to move, Enter to open, Escape to clear. Stripes indicate free space.</span>}
     </div>
     <details className="map-block-list">

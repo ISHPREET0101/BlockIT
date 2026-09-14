@@ -66,6 +66,20 @@ async function run() {
   const gamesPath=path.join(fixture,'Games');
   assert.equal(await js('return document.querySelector(".map-path").textContent'),gamesPath,'Focus shows the full folder path');
   assert((await js('return document.querySelector(".treemap-cell title").textContent')).includes(gamesPath),'Hover tooltip includes the full path');
+  // Exercise the real validated IPC action without replacing the user's clipboard.
+  let copiedPath;
+  require('electron').clipboard.writeText=value=>{copiedPath=value;};
+  await js('document.querySelector(".map-copy-path").focus()');
+  await delay(50);
+  assert.equal(await js('return document.querySelector(".map-path").textContent'),gamesPath,'Moving keyboard focus to Copy preserves the displayed path');
+  await js('document.querySelector(".map-copy-path").click()');
+  for(let i=0;i<40&&!copiedPath;i++)await delay(50);
+  assert.equal(copiedPath,gamesPath,'Copy sends the full path through the validated native clipboard action');
+  assert.equal(await js('return document.querySelectorAll(".treemap-cell[data-kind=folder]").length'),6,'Copy does not navigate');
+  await js('document.querySelector(".treemap-cell[data-kind=free]").focus()');
+  await delay(50);
+  assert.equal(await js('return document.querySelector(".map-copy-path")'),null,'Synthetic free space has no copy action');
+
   await js('document.querySelectorAll(".treemap-cell")[1].dispatchEvent(new MouseEvent("mouseover",{bubbles:true}))');
   await delay(100);
   assert.equal(await js('return document.querySelector(".map-path").textContent'),path.join(fixture,'Study videos'),'Hover updates the full path');

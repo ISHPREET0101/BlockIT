@@ -140,7 +140,7 @@ function buildSmallImage(imagePath) {
 // tiny resident files under \Users. Forces the volume walk past the 4096-entry
 // per-batch limit, so the "next" continuation path is exercised end to end.
 function buildBulkImage(imagePath, bulkCount) {
-  const MFT_LCN = 100, RUN_CLUSTERS = 3000, RECORDS = RUN_CLUSTERS * CLUSTER / RECORD; // 12000
+  const MFT_LCN = 100, RUN_CLUSTERS = Math.max(3000, Math.ceil((1000 + bulkCount) / 4)), RECORDS = RUN_CLUSTERS * CLUSTER / RECORD; // 12000
   const image = Buffer.alloc((MFT_LCN + RUN_CLUSTERS) * CLUSTER);
   bootSector(MFT_LCN).copy(image, 0);
 
