@@ -107,6 +107,7 @@ export interface QueryResult {
 }
 
 export interface TreemapNode extends FileNode {
+  children?: TreemapNode[];
   synthetic?: boolean;
   syntheticKind?: 'free' | 'remainder';
 }
@@ -149,7 +150,7 @@ export interface BlockItApi {
   data: {
     summary(scanId: string): Promise<ScanSummary>;
     nodes(query: NodeQuery): Promise<QueryResult>;
-    treemap(scanId: string, parentId: number): Promise<TreemapNode[]>;
+    treemap(scanId: string, parentId: number, depth?: number): Promise<TreemapNode[]>;
     warnings(scanId: string): Promise<Array<{ path: string; message: string }>>;
     ancestors(scanId: string, nodeId: number): Promise<Array<{id:number;name:string}>>;
   };

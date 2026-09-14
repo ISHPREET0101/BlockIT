@@ -40,3 +40,28 @@ describe('treemap colours', () => {
     expect(readableText('#dbe7de')).toBe('#14231c');
   });
 });
+
+import { adjacentColors, metricColor, sizeColors, ageColors, levelColors, flattenNodes } from './treemap';
+describe('treemap display modes', () => {
+  it('uses byte and age boundaries including missing dates', () => {
+    expect(metricColor(node(1), 'size', 1024**2-1, 1)).toBe(sizeColors[0]);
+    expect(metricColor(node(1), 'size', 1024**2, 1)).toBe(sizeColors[1]);
+    expect(metricColor(node(1), 'size', 1024**3, 1)).toBe(sizeColors[2]);
+    expect(metricColor(node(1), 'size', 1024**4, 1)).toBe(sizeColors[3]);
+    const now=1800000000000;
+    expect(metricColor(node(1,{modifiedAt:now-30*86400000}), 'age', 1, 1, now)).toBe(ageColors[1]);
+    expect(metricColor(node(1), 'age', 1, 1, now)).toBe(ageColors[4]);
+    expect(metricColor(node(1), 'level', 1, 3)).toBe(levelColors[2]);
+  });
+  it('keeps neighbours distinct beyond one palette cycle', () => {
+    const rectangles=Array.from({length:40},(_,i)=>({node:node(i),depth:1,x0:(i%10)*106,x1:(i%10)*106+100,y0:Math.floor(i/10)*106,y1:Math.floor(i/10)*106+100}));
+    const colors=adjacentColors(rectangles);
+    for(let i=0;i<40;i++) {
+      if(i%10<9) expect(colors.get(i)).not.toBe(colors.get(i+1));
+      if(i<30) expect(colors.get(i)).not.toBe(colors.get(i+10));
+    }
+  });
+  it('retains zero-byte descendants for the accessible list', () => {
+    expect(flattenNodes([node(1,{children:[node(2,{size:0})]})]).map(n=>n.id)).toEqual([1,2]);
+  });
+});

@@ -170,26 +170,39 @@ export function getSummary(scanId: string): ScanSummary {
   })();
 }
 
-export function treemapChildren(scanId: string, parentId: number): TreemapNode[] {
+export function treemapChildren(scanId: string, parentId: number, depth = 1): TreemapNode[] {
+  if (!Number.isInteger(depth) || depth < 1 || depth > 3) throw new Error("Invalid treemap depth");
   nodeIdentifier(parentId);
   const db = openDatabase(scanId);
   return db.transaction(() => {
-    const rows = db.prepare('SELECT * FROM nodes WHERE parent_id=? ORDER BY size DESC LIMIT 180').all(parentId) as Array<Record<string,unknown>>;
-    const visible: TreemapNode[] = rows.map(mapNode);
-    if (visible.length < 180) return visible;
-    const totals = db.prepare(`SELECT COUNT(*) AS count,SUM(size) AS size,SUM(allocated_size) AS allocated,
-      SUM(kind='file') AS files,SUM(kind='folder') AS folders FROM nodes WHERE parent_id=?`)
-      .get(parentId) as {count:number;size:number;allocated:number;files:number;folders:number};
-    const count=totals.count-visible.length;
-    if (count>0) visible.push({
-      id:-parentId,parentId,name:count.toLocaleString()+' smaller items',path:'',kind:'file',extension:'',category:'Other',
-      size:totals.size-visible.reduce((sum,node)=>sum+node.size,0),
-      allocatedSize:totals.allocated-visible.reduce((sum,node)=>sum+node.allocatedSize,0),
-      modifiedAt:0,attributes:'',itemCount:count,
-      fileCount:totals.files-visible.filter(node=>node.kind==='file').length,
-      folderCount:totals.folders-visible.filter(node=>node.kind==='folder').length,synthetic:true,syntheticKind:'remainder'
-    });
-    return visible;
+    // Bound IPC payload and SVG work even on scans with millions of entries.
+    let remaining = 2500;
+    const readChildren = (parentId: number, level: number): TreemapNode[] => {
+      const rows = db.prepare('SELECT * FROM nodes WHERE parent_id=? ORDER BY size DESC LIMIT 180').all(parentId) as Array<Record<string,unknown>>;
+      const visible: TreemapNode[] = rows.map(mapNode);
+      remaining -= visible.length;
+      if (visible.length === 180) {
+        const totals = db.prepare(`SELECT COUNT(*) AS count,SUM(size) AS size,SUM(allocated_size) AS allocated,
+          SUM(kind='file') AS files,SUM(kind='folder') AS folders FROM nodes WHERE parent_id=?`)
+          .get(parentId) as {count:number;size:number;allocated:number;files:number;folders:number};
+        const count=totals.count-visible.length;
+        if (count>0) { remaining--; visible.push({
+          id:-parentId,parentId,name:count.toLocaleString()+' smaller items',path:'',kind:'file',extension:'',category:'Other',
+          size:totals.size-visible.reduce((sum,node)=>sum+node.size,0),
+          allocatedSize:totals.allocated-visible.reduce((sum,node)=>sum+node.allocatedSize,0),
+          modifiedAt:0,attributes:'',itemCount:count,
+          fileCount:totals.files-visible.filter(node=>node.kind==='file').length,
+          folderCount:totals.folders-visible.filter(node=>node.kind==='folder').length,synthetic:true,syntheticKind:'remainder'
+        }); }
+      }
+      if (level > 1) for (const node of visible) {
+        if (node.kind === "folder" && !node.synthetic && remaining >= 181) {
+          node.children = readChildren(node.id, level - 1);
+        }
+      }
+      return visible;
+    };
+    return readChildren(parentId, depth);
   })();
 }
 

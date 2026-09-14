@@ -13,6 +13,9 @@ async function run() {
     await fs.mkdir(path.join(fixture,name),{recursive:true});
     await fs.writeFile(path.join(fixture,name,'sample.txt'),Buffer.alloc(size));
   }
+  await fs.mkdir(path.join(fixture,'Games','Nested'),{recursive:true});
+  await fs.writeFile(path.join(fixture,'Games','Nested','deep.txt'),Buffer.alloc(3000));
+  await fs.writeFile(path.join(fixture,'empty.txt'),'');
   require('../dist-electron/main.js');
   await app.whenReady();
   let win;
@@ -38,6 +41,25 @@ async function run() {
   assert.equal(await js("return document.querySelectorAll('.treemap-cell[data-kind=folder]').length"),6);
   assert.equal(await js("return new Set(Array.from(document.querySelectorAll('.treemap-cell[data-kind=folder] .block-outline')).map(r=>r.getAttribute('fill'))).size"),6,'Every folder is visibly distinct');
   assert(await js("return document.querySelector('[data-kind=free] .block-outline').getAttribute('fill').startsWith('url(')"),'Free space is patterned');
+  const deep=await win.webContents.executeJavaScript('window.blockit.data.treemap('+JSON.stringify(scanId)+','+summary.rootId+',3)');
+  assert(deep.find(n=>n.name==='Games').children.find(n=>n.name==='Nested').children.some(n=>n.name==='deep.txt'),'Depth 3 loads grandchildren');
+  await assert.rejects(win.webContents.executeJavaScript('window.blockit.data.treemap('+JSON.stringify(scanId)+','+summary.rootId+',4)'));
+  for(const label of ['Types','Size','Age','Levels','Distinct']) {
+    await js('Array.from(document.querySelectorAll(".map-segments button")).find(b=>b.textContent==='+JSON.stringify(label)+').click()');
+    await delay(80);
+    assert(await js('return document.querySelector(".map-legend").textContent.length>20'));
+  }
+  await js('Array.from(document.querySelectorAll(".map-segments button")).find(b=>b.getAttribute("aria-label")==="Show 3 levels").click()');
+  await delay(500);
+  assert(await js('return document.querySelectorAll(".treemap-cell").length>13'),'Nested rectangles rendered');
+  await fs.writeFile(path.join(__dirname,'../docs/treemap-nested.png'),(await win.webContents.capturePage()).toPNG());
+  await js('const input=document.querySelector(".map-size-filter input");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(input,"6");input.dispatchEvent(new Event("input",{bubbles:true}))');
+  await delay(100);
+  assert.equal(await js('return document.querySelectorAll(".treemap-cell[data-kind=folder]").length'),0,'Size filter hides small folders');
+  assert(await js('return document.querySelector(".map-block-list").textContent.includes("empty.txt")'),'Zero-byte items remain accessible');
+  await js('const input=document.querySelector(".map-size-filter input");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(input,"0");input.dispatchEvent(new Event("input",{bubbles:true}))');
+  await js('Array.from(document.querySelectorAll(".map-segments button")).find(b=>b.getAttribute("aria-label")==="Show 1 levels").click()');
+  await delay(500);
   await js("const first=document.querySelector('.treemap-cell'); first.focus()");
   await delay(100);
   assert(await js("return document.querySelector('.map-details').textContent.includes('Games')"),'Focus shows metadata');
@@ -63,7 +85,7 @@ async function run() {
   await js("Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('Back to root')).click()");
   await delay(400);
   assert.equal(await js("return document.querySelectorAll('.treemap-cell[data-kind=folder]').length"),6,'Reset returns to root');
-  console.log('PASS: six distinct folder colours, patterned free space, focus details, search highlighting, PNG export, light/dark rendering, keyboard drill-down and reset.');
+  console.log('PASS: five colour modes, three nested levels, invalid depth rejection, size filtering, zero-byte list, six distinct folder colours, patterned free space, focus details, search highlighting, PNG export, light/dark rendering, keyboard drill-down and reset.');
   app.quit();
 }
 run().catch(error=>{console.error(error);app.exit(1);});
