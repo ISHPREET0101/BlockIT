@@ -84,7 +84,12 @@ function App() {
       setSummary(next);
       setParentId((current) => current ?? next.rootId);
       setBreadcrumbs((current) => current.length ? current : [{ id: next.rootId, name: next.label }]);
-      setRefreshVersion((version) => version + 1);
+      // While a scan is running, folder and file lists refresh on navigation
+      // or completion, not on every summary tick: unindexed mid-scan queries
+      // would compete with the scanner for disk.
+      if (next.status !== 'scanning' && next.status !== 'paused' && next.status !== 'cancelling') {
+        setRefreshVersion((version) => version + 1);
+      }
     } catch {
       // The worker may still be creating its first committed batch.
     } finally {
@@ -130,6 +135,7 @@ function App() {
       setSearch('');
       setDebouncedSearch('');
       const started = await window.blockit.scan.start(root);
+      if (!started.scanId) return;   // empty id: an elevated relaunch took over and this window is closing
       navigationSequence.current++;
       setTarget(root);setPage(1);setExtension('');setKind('');
       scanIdRef.current = started.scanId;

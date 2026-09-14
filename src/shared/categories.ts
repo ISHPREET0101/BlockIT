@@ -20,7 +20,8 @@ const categoryByExtension = new Map<string, FileCategory>(
   Object.entries(groups).flatMap(([category, extensions]) => [...extensions].map(extension => [extension,category as FileCategory] as const)),
 );
 export function categorize(extension: string): FileCategory {
-  return categoryByExtension.get(extension.replace(/^\./, '').toLowerCase()) || 'Other';
+  const key = extension.charCodeAt(0) === 46 ? extension.slice(1) : extension;
+  return categoryByExtension.get(key.toLowerCase()) || 'Other';
 }
 
 export const categoryColors: Record<FileCategory, string> = {

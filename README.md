@@ -19,6 +19,31 @@ npm run package:win
 
 The Windows installer and portable executable are written to `release/`.
 
+## Whole-drive MFT scanning (1.8)
+
+- On a drive root, the native helper reads the NTFS Master File Table directly — one sequential pass over `$MFT` builds the whole volume tree, replacing hundreds of thousands of directory round trips. It streams results over the same demand-driven protocol as directory walks (≤4,096 entries per batch), so pause and cancel stay immediate and the worker needed only a thin dispatch change. Administrator rights are required to open the volume; without them the scan falls back to the directory walk with a warning.
+- MFT parsing skips deleted records, NTFS metafiles and extension records, reports reparse points as links without descending into them, and counts hardlinks per link — matching the walk engine. Subtree scans resolve the requested root through the MFT too, so an elevated scan of any folder on the drive can use the same engine. Unknown records are skipped with a warning, never fatal.
+- When a scan targets a drive root without elevation, the app probes the volume through the helper and offers **Restart as administrator** up front (UAC relaunch); cancelling simply continues with the standard scan.
+- Walk-engine improvements for the fallback path: 4,096-entry batches, an in-memory directory map replacing per-directory SQL lookups, a lane budget capped at 16, and a leaner nodes table (no constant scan id column). A real-drive reconciliation during verification caught and fixed a subtle bug that could silently drop subtrees beyond the helper's 2,048-directory prefetch cap; a 2,200-directory fixture now guards the split.
+
+Paired alternating full scans of a real `C:\` drive (elevated, warm cache, same machine) measured **{{C_OLD}} → {{C_NEW}}** median wall time including index build and checkpoint — the whole 2.9-million-entry drive in {{C_NEW}}. The non-elevated walk engine measured **101.6 s → 3.3 s** (31×) on a 193,143-entry development tree with node-for-node identical results. See `docs/scanner-comparison-1.8.json` and `docs/scanner-comparison-1.8-fallback.json`. Warm-cache same-machine measurements; cold-cache, HDD and network results will vary.
+
+Run `node .bench/volume-fixture-check.cjs` after building to drive the MFT parser against a crafted synthetic volume image (sparse runlists, resident and non-resident data, DOS aliases, deleted/extension records, reparse points, exclusions, subtree roots). `scripts/compare-scanner-18.cjs` pairs the current build against an archived 1.7 worker on a real drive root; MFT mode needs elevation.
+
+## Faster Windows scanning (1.7)
+
+- A native Windows metadata reader gets file names, sizes, dates and attributes together using [FindFirstFileExW](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-findfirstfileexw) with a larger enumeration buffer. This avoids a separate metadata request for every file; no file contents are read.
+- Several helper processes enumerate different directories in parallel (adaptive: a lane budget of two to four, collapsing to one when directory opens average slower than 25 ms, which suggests a mechanical or otherwise latency-bound disk). Requests stay demand-driven with at most 1,024 entries per batch and one directory open per reader; pause and cancel remain immediate.
+- Each open response carries the folder's fresh write time and its resolved final path, so the worker no longer issues per-directory lstat/realpath calls. Junctions and directory reparse points are still never traversed, folders swapped for junctions or files are still rejected, and a changed ancestor is still detected through the resolved path. Compatibility scanning keeps the previous checks.
+- The helper serializes responses with a hand-written encoder (the reflection-based serializer was the single largest helper cost), and index building moved out of the insert path: rows land in an append-only table during the scan and the five result indexes are built once at the end. Each database holds one scan, so index keys omit the constant scan id. Folder roll-ups run through parent reference counts in memory instead of a queue table, and file rows use multi-row inserts.
+- If the native helper cannot start, scanning continues with the bounded compatibility engine and a warning. A failed reader never replays a partially indexed folder. Native enumeration requests time out; cancellation stops outstanding native requests. A timed-out folder is skipped rather than immediately retried through the compatibility API.
+
+Alternating paired scans against the packaged 1.6 worker measured **2,327 ms → 790 ms** median for **20,000 generated files** (2.9×) and **12,904 ms → 2,166 ms** for **120,000 files across 2,400 folders** (6.0×). Against the original unpaired 1.6 baseline on a 120,000-file flat fixture (21.6 s), the 1.7 worker completes in about 2.2–2.6 s. Small scans are dominated by fixed process startup, so relative gains grow with tree size. See `docs/scanner-comparison-1.7.json`. These warm-cache local tests include helper startup; whole-drive, HDD and network performance will vary. This is standard directory enumeration, not NTFS MFT scanning.
+
+`npm run build:main` compiles the small x64 helper using the Windows .NET Framework C# compiler, then builds Electron code. Windows builds require .NET Framework 4.x and `System.Web.Extensions` (included on supported Windows 10/11 installations). Packaging places the helper beside `app.asar`, outside the archive. Other development platforms use compatibility scanning.
+
+Run `npm run test:native` after building to compare native and compatibility totals, timestamps, Unicode/long paths, junctions, exclusions, fallback, empty/missing folders, bounded batches and helper shutdown. `scripts/compare-v15.cjs` requires the original 1.5.0 `app.asar` in `release/win-unpacked/resources/`; run before packaging replaces that baseline.
+
 ## Performance and reliability update (1.5)
 
 - Four-at-a-time metadata lookups overlap disk latency without an unbounded queue. Existing low-priority scanning, small database caches, and periodic yields remain enabled.

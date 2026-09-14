@@ -44,7 +44,7 @@ async function main() {
   shell.openPath=async()=>{opened++;return '';};shell.showItemInFolder=()=>{opened++;};clipboard.writeText=value=>{copied=value;};
   assert.equal((await invoke('actions.copyPath',scanId,one.id)).ok,true,'Dot-prefixed children are valid');
   assert.equal(copied,one.path);
-  const bogus=Number(db.prepare("INSERT INTO nodes(scan_id,parent_id,name,path,kind,size) VALUES (?,?,?,?,'file',1)").run(scanId,rootNode.id,'outside',path.join(outside,'private.txt')).lastInsertRowid);
+  const bogus=Number(db.prepare("INSERT INTO nodes(parent_id,name,path,kind,size) VALUES (?,?,?,'file',1)").run(rootNode.id,'outside',path.join(outside,'private.txt')).lastInsertRowid);
   assert.equal((await invoke('actions.open',scanId,bogus)).ok,false);assert.equal(opened,0);
   db.prepare('DELETE FROM nodes WHERE id=?').run(bogus);
   assert.equal((await invoke('actions.open',scanId,-1)).ok,false);

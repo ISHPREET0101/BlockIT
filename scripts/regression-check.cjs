@@ -23,7 +23,7 @@ async function main() {
   await fs.symlink(root,path.join(root,'cycle'),'junction');
   const scanId=randomUUID(),dbPath=path.join(base,scanId+'.db');
   const worker=new Worker(path.join(__dirname,'../dist-electron/scanner-worker.js'),{
-    workerData:{root,scanId,dbPath,clusterSize:4096,volumeTotalBytes:1e9,volumeFreeBytes:1e8},
+    workerData:{root,scanId,dbPath,clusterSize:4096,volumeTotalBytes:1e9,volumeFreeBytes:1e8,metadataEngine:'portable'},
     execArgv:['--require',path.join(__dirname,'scanner-faults.cjs')],
   });
   let maximum=0,done;
@@ -65,10 +65,10 @@ async function main() {
     for(const query of [{scanId,sortBy:'size;DROP TABLE nodes'}, {scanId,page:-1}, {scanId,minSize:NaN}, {scanId:'../outside'}, {scanId,kind:'symlink'}]) await assert.rejects(request('nodes',query));
 
     // Expand only generated metadata. Every indexed node belongs to this disposable fixture.
-    const insert=db.prepare("INSERT INTO nodes(scan_id,parent_id,name,path,kind,extension,category,size,allocated_size,modified_at) VALUES (?,?,?,?,'file','txt','Documents',?,?,?)");
+    const insert=db.prepare("INSERT INTO nodes(parent_id,name,path,kind,extension,category,size,allocated_size,modified_at) VALUES (?,?,?,'file','txt','Documents',?,?,?)");
     const count=100005;
     db.transaction(()=>{
-      for(let i=0;i<count;i++) insert.run(scanId,rootId,'row-'+String(i).padStart(6,'0')+'.txt',path.join(root,'row-'+i+'.txt'),i%3,4096,1234);
+      for(let i=0;i<count;i++) insert.run(rootId,'row-'+String(i).padStart(6,'0')+'.txt',path.join(root,'row-'+i+'.txt'),i%3,4096,1234);
     })();
     const first=await request('nodes',{scanId,view:'search',search:'row-',pageSize:37,sortDir:'asc'});
     assert.equal(first.total,count);assert.equal(first.items.length,37);
