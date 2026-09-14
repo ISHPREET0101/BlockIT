@@ -26,9 +26,9 @@ The Windows installer and portable executable are written to `release/`.
 - When a scan targets a drive root without elevation, the app probes the volume through the helper and offers **Restart as administrator** up front (UAC relaunch); cancelling simply continues with the standard scan.
 - Walk-engine improvements for the fallback path: 4,096-entry batches, an in-memory directory map replacing per-directory SQL lookups, a lane budget capped at 16, and a leaner nodes table (no constant scan id column). A real-drive reconciliation during verification caught and fixed a subtle bug that could silently drop subtrees beyond the helper's 2,048-directory prefetch cap; a 2,200-directory fixture now guards the split.
 
-Paired alternating full scans of a real `C:\` drive (elevated, warm cache, same machine) measured **{{C_OLD}} → {{C_NEW}}** median wall time including index build and checkpoint — the whole 2.9-million-entry drive in {{C_NEW}}. The non-elevated walk engine measured **101.6 s → 3.3 s** (31×) on a 193,143-entry development tree with node-for-node identical results. See `docs/scanner-comparison-1.8.json` and `docs/scanner-comparison-1.8-fallback.json`. Warm-cache same-machine measurements; cold-cache, HDD and network results will vary.
+Paired alternating full scans of a real `C:\` drive (elevated, warm cache, same machine) measured **1,779.5 s (v1.7 directory walk) → 79.8 s (this engine, MFT mode)** median wall time including index build and checkpoint — the whole ~2.8-million-entry drive in under 80 seconds. The non-elevated walk engine measured **101.6 s → 3.3 s** (31×) on a 193,143-entry development tree with node-for-node identical results. See `docs/scanner-comparison-1.8.json` and `docs/scanner-comparison-1.8-fallback.json`. Warm-cache same-machine measurements; cold-cache, HDD and network results will vary.
 
-Run `node .bench/volume-fixture-check.cjs` after building to drive the MFT parser against a crafted synthetic volume image (sparse runlists, resident and non-resident data, DOS aliases, deleted/extension records, reparse points, exclusions, subtree roots). `scripts/compare-scanner-18.cjs` pairs the current build against an archived 1.7 worker on a real drive root; MFT mode needs elevation.
+Run `npm run test:volume` after building to drive the MFT parser against crafted synthetic volume images, including a 9,000-entry image that forces multi-batch continuation (sparse runlists, resident and non-resident data, DOS aliases, deleted/extension records, reparse points, exclusions, subtree roots). `scripts/compare-scanner-18.cjs` pairs the current build against an archived 1.7 worker on a real drive root; MFT mode needs elevation.
 
 ## Faster Windows scanning (1.7)
 
@@ -43,6 +43,30 @@ Alternating paired scans against the packaged 1.6 worker measured **2,327 ms →
 `npm run build:main` compiles the small x64 helper using the Windows .NET Framework C# compiler, then builds Electron code. Windows builds require .NET Framework 4.x and `System.Web.Extensions` (included on supported Windows 10/11 installations). Packaging places the helper beside `app.asar`, outside the archive. Other development platforms use compatibility scanning.
 
 Run `npm run test:native` after building to compare native and compatibility totals, timestamps, Unicode/long paths, junctions, exclusions, fallback, empty/missing folders, bounded batches and helper shutdown. `scripts/compare-v15.cjs` requires the original 1.5.0 `app.asar` in `release/win-unpacked/resources/`; run before packaging replaces that baseline.
+
+## Fast scanning and the advanced treemap (1.9)
+
+- Scanning a drive root walks the NTFS Master File Table directly (one sequential pass; administrator rights required) and falls back to the parallel directory walk automatically when the volume cannot be opened. Folder scans use the same walk engine with several helper lanes in parallel.
+- Two correctness defects in the 1.8 engine are fixed: elevated MFT scans stopped after the first 4,096 entries (volume-mode continuation requests were routed to the walk writer), and the last queued file rows of a volume scan were counted into the run totals but never written. See `docs/PERFORMANCE-ANALYSIS.md`.
+- Measured on one machine, archived v1.5.0 worker versus this branch, alternating paired runs with output parity asserted node-for-node (method and raw results in `docs/BENCHMARKS.md` and `docs/benchmark-1.9.json`):
+
+| Profile | 1.5 | 1.9 | Speedup |
+|---|---:|---:|---:|
+| small | 1,683 ms | 588 ms | 2.86x |
+| medium | 9,806 ms | 1,076 ms | 9.11x |
+| large | 24.3 s | 2,030 ms | 11.95x |
+| D:\Projects | 206.9 s | 6,633 ms | 31.19x |
+
+  A full elevated `C:\` MFT scan now completes instead of stopping after 4,096 entries; the previous directory-walk baseline for that volume is recorded in `docs/verification-1.8.md`.
+- The treemap is now a nested map: depth control (1-3 levels), five colour modes (Distinct, Types, Size, Age, Levels) each with a legend, a floating pointer tooltip, and a minimum-share filter that dims tiny blocks. Search, keyboard navigation, free space and PNG export are unchanged, and the palette is a cartographic ochre and sage set.
+
+Re-run the benchmarks and the new checks:
+
+```powershell
+npm run bench:scan suite    # small, medium and large fixtures plus a real tree
+npm run test:volume         # crafted MFT images incl. multi-batch continuation
+npm run test:drive          # elevated whole-drive check (needs an admin shell)
+```
 
 ## Performance and reliability update (1.5)
 

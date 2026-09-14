@@ -1,38 +1,38 @@
 {
   "fixtureFiles": 4000,
   "baseline": {
-    "durationMs": 1179,
-    "cpuMs": 937,
-    "peakProcessRssMB": 61,
+    "durationMs": 1704,
+    "cpuMs": 1438,
+    "peakProcessRssMB": 58,
     "files": 4000,
-    "dbPath": "C:\\Users\\sishp\\AppData\\Local\\Temp\\blockit-perf-qC22Cr\\c5d84391-c948-46cc-8955-6436265d9ba4.db"
+    "dbPath": "C:\\Users\\sishp\\AppData\\Local\\Temp\\blockit-perf-ObcY9J\\e1d4afb9-9518-4345-8c90-625d6cfdcf0c.db"
   },
   "current": {
-    "durationMs": 513,
-    "cpuMs": 250,
-    "peakProcessRssMB": 62,
+    "durationMs": 612,
+    "cpuMs": 453,
+    "peakProcessRssMB": 60,
     "files": 4000,
-    "dbPath": "C:\\Users\\sishp\\AppData\\Local\\Temp\\blockit-perf-qC22Cr\\0b916aaa-c48c-4a4a-85b3-43c2ba583514.db"
+    "dbPath": "C:\\Users\\sishp\\AppData\\Local\\Temp\\blockit-perf-ObcY9J\\136912fd-4e01-4b55-addd-1d62349d085b.db"
   },
   "controls": {
-    "durationMs": 578,
-    "cpuMs": 328,
-    "peakProcessRssMB": 78,
-    "files": 8192,
-    "cancelLatencyMs": 115,
-    "dbPath": "C:\\Users\\sishp\\AppData\\Local\\Temp\\blockit-perf-qC22Cr\\3104e360-f679-4a5c-8ba8-555fdb99e6d9.db"
+    "durationMs": 614,
+    "cpuMs": 391,
+    "peakProcessRssMB": 73,
+    "files": 4096,
+    "cancelLatencyMs": 82,
+    "dbPath": "C:\\Users\\sishp\\AppData\\Local\\Temp\\blockit-perf-ObcY9J\\ad23d2f6-3e21-4a41-b69a-1bc05708c6ee.db"
   },
   "summary": {
     "rows": 200000,
     "iterations": 20,
-    "legacyMs": 1118.5,
-    "incrementalMs": 0.2
+    "legacyMs": 1784.78,
+    "incrementalMs": 0.53
   },
   "queryChecks": {
     "treemapRows": 181,
     "searchRows": 50,
     "matchingRows": 200000,
-    "hostHeartbeatTicks": 21
+    "hostHeartbeatTicks": 35
   },
   "note": "Local generated metadata benchmark; not a whole-drive throughput or laptop resource guarantee. CPU and RSS measure the Electron test host only, excluding the native helper; do not use them as a whole-app resource comparison."
 }
