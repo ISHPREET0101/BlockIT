@@ -49,6 +49,7 @@ function App() {
   const [summary, setSummary] = useState<ScanSummary | null>(null);
   const [parentId, setParentId] = useState<number | null>(null);
   const [breadcrumbs, setBreadcrumbs] = useState<Array<{ id: number; name: string }>>([]);
+  const [mapDepth, setMapDepth] = useState(1);
   const [treemapNodes, setTreemapNodes] = useState<TreemapNode[]>([]);
   const [result, setResult] = useState<QueryResult | null>(null);
   const [resultKey, setResultKey] = useState('');
@@ -84,7 +85,12 @@ function App() {
       setSummary(next);
       setParentId((current) => current ?? next.rootId);
       setBreadcrumbs((current) => current.length ? current : [{ id: next.rootId, name: next.label }]);
-      setRefreshVersion((version) => version + 1);
+      // While a scan is running, folder and file lists refresh on navigation
+      // or completion, not on every summary tick: unindexed mid-scan queries
+      // would compete with the scanner for disk.
+      if (next.status !== 'scanning' && next.status !== 'paused' && next.status !== 'cancelling') {
+        setRefreshVersion((version) => version + 1);
+      }
     } catch {
       // The worker may still be creating its first committed batch.
     } finally {
@@ -130,6 +136,7 @@ function App() {
       setSearch('');
       setDebouncedSearch('');
       const started = await window.blockit.scan.start(root);
+      if (!started.scanId) return;   // empty id: an elevated relaunch took over and this window is closing
       navigationSequence.current++;
       setTarget(root);setPage(1);setExtension('');setKind('');
       scanIdRef.current = started.scanId;
@@ -187,9 +194,9 @@ function App() {
   useEffect(() => {
     if (!scanId || parentId == null || view!=='treemap' || !settings.showTreemap || debouncedSearch.trim()) return;
     let alive = true;
-    void window.blockit.data.treemap(scanId, parentId).then((nodes) => { if (alive) {setTreemapNodes(nodes);setTreeKey(scanId+':'+parentId);} }).catch(error => { if (alive) {setTreemapNodes([]);showResult({ok:false,message:String(error)});} });
+    void window.blockit.data.treemap(scanId, parentId, mapDepth).then((nodes) => { if (alive) {setTreemapNodes(nodes);setTreeKey(scanId+':'+parentId);} }).catch(error => { if (alive) {setTreemapNodes([]);showResult({ok:false,message:String(error)});} });
     return () => { alive = false; };
-  }, [scanId, parentId, refreshVersion,view,settings.showTreemap,debouncedSearch]);
+  }, [scanId, parentId, refreshVersion,view,settings.showTreemap,debouncedSearch,mapDepth]);
 
   useEffect(() => { setPage(1); setSelected(null); }, [view, search, extension, kind, selectedCategory, parentId, settings.largeFileThreshold, settings.oldFileDays, sortBy, sortDir]);
   useEffect(() => { if (toast) { const timer = setTimeout(() => setToast(null), 3600); return () => clearTimeout(timer); } }, [toast]);
@@ -381,7 +388,7 @@ function App() {
             )}
 
             {view === 'treemap' && settings.showTreemap && !debouncedSearch.trim() && (
-              <TreemapView nodes={displayedTreemapNodes} title={breadcrumbs.at(-1)?.name || summary?.label || 'Storage'} settings={settings}
+              <TreemapView depth={mapDepth} onDepthChange={setMapDepth} nodes={displayedTreemapNodes} title={breadcrumbs.at(-1)?.name || summary?.label || 'Storage'} settings={settings}
                 canReset={breadcrumbs.length > 1} onOpen={onMapOpen} onReset={onMapReset} onExport={onMapExport} />
             )}
 

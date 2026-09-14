@@ -46,9 +46,11 @@ export function mapNode(row: Record<string, unknown>): FileNode {
   };
 }
 
+// One database holds exactly one scan, so nodes rows carry no scan_id column
+// and queries filter nothing beyond the user's criteria.
 function queryParts(query: NodeQuery): { where: string; params: unknown[] } {
-  const clauses = ['scan_id = ?'];
-  const params: unknown[] = [query.scanId];
+  const clauses: string[] = [];
+  const params: unknown[] = [];
   if (query.view === 'browse') {
     clauses.push(query.parentId == null ? 'parent_id IS NULL' : 'parent_id = ?');
     if (query.parentId != null) params.push(query.parentId);
@@ -86,7 +88,7 @@ function queryParts(query: NodeQuery): { where: string; params: unknown[] } {
     clauses.push('kind = ?');
     params.push(query.kind);
   }
-  return { where: clauses.join(' AND '), params };
+  return { where: clauses.length ? clauses.join(' AND ') : '1=1', params };
 }
 
 export function queryNodes(input: NodeQuery): QueryResult {
@@ -125,14 +127,26 @@ export function getSummary(scanId: string): ScanSummary {
   return db.transaction(() => {
     const run = db.prepare('SELECT * FROM scan_runs WHERE id = ?').get(scanId) as Record<string, unknown> | undefined;
     if (!run) throw new Error('The scan is still starting.');
-    const root = db.prepare('SELECT id FROM nodes WHERE scan_id = ? AND parent_id IS NULL LIMIT 1').get(scanId) as { id: number } | undefined;
+    const root = db.prepare('SELECT id FROM nodes WHERE parent_id IS NULL LIMIT 1').get() as { id: number } | undefined;
     if (!root) throw new Error('The scan has not committed its root yet.');
     const aggregate = (field: 'category' | 'extension') => db.prepare(`
       SELECT CASE WHEN name='' THEN '(no extension)' ELSE name END AS name,size,allocatedSize,count
       FROM aggregates WHERE dimension=? AND count>0 ORDER BY size DESC LIMIT 50
     `).all(field) as ScanSummary['categories'];
-    const topFiles = (db.prepare("SELECT * FROM nodes WHERE scan_id = ? AND kind = 'file' ORDER BY size DESC LIMIT 8").all(scanId) as Array<Record<string, unknown>>).map(mapNode);
-    const topFolders = (db.prepare("SELECT * FROM nodes WHERE scan_id = ? AND kind = 'folder' AND parent_id = ? ORDER BY size DESC LIMIT 8").all(scanId, root.id) as Array<Record<string, unknown>>).map(mapNode);
+    // While the scan runs, secondary indexes do not exist yet; the scanner
+    // publishes its live top lists to a tiny table so refreshes stay cheap.
+    let topFiles: Array<Record<string, unknown>>|undefined;
+    let topFolders: Array<Record<string, unknown>>|undefined;
+    if (String(run.status) === 'scanning' || String(run.status) === 'paused' || String(run.status) === 'cancelling') {
+      try {
+        topFiles = db.prepare("SELECT * FROM scan_top WHERE kind='file' ORDER BY size DESC").all() as Array<Record<string, unknown>>;
+        topFolders = db.prepare("SELECT * FROM scan_top WHERE kind='folder' ORDER BY size DESC").all() as Array<Record<string, unknown>>;
+      } catch { topFiles = undefined; topFolders = undefined; }
+    }
+    if (!topFiles || !topFolders || (topFiles.length === 0 && topFolders.length === 0)) {
+      topFiles = db.prepare("SELECT * FROM nodes WHERE kind = 'file' ORDER BY size DESC LIMIT 8").all() as Array<Record<string, unknown>>;
+      topFolders = db.prepare("SELECT * FROM nodes WHERE kind = 'folder' AND parent_id = ? ORDER BY size DESC LIMIT 8").all(root.id) as Array<Record<string, unknown>>;
+    }
     return {
       scanId,
       rootId: Number(root.id),
@@ -150,32 +164,45 @@ export function getSummary(scanId: string): ScanSummary {
       volumeFreeBytes: Number(run.volume_free_size),
       categories: aggregate('category'),
       extensions: aggregate('extension'),
-      topFiles,
-      topFolders,
+      topFiles: topFiles.map(mapNode),
+      topFolders: topFolders.map(mapNode),
     };
   })();
 }
 
-export function treemapChildren(scanId: string, parentId: number): TreemapNode[] {
+export function treemapChildren(scanId: string, parentId: number, depth = 1): TreemapNode[] {
+  if (!Number.isInteger(depth) || depth < 1 || depth > 3) throw new Error("Invalid treemap depth");
   nodeIdentifier(parentId);
   const db = openDatabase(scanId);
   return db.transaction(() => {
-    const rows = db.prepare('SELECT * FROM nodes WHERE scan_id=? AND parent_id=? ORDER BY size DESC LIMIT 180').all(scanId,parentId) as Array<Record<string,unknown>>;
-    const visible: TreemapNode[] = rows.map(mapNode);
-    if (visible.length < 180) return visible;
-    const totals = db.prepare(`SELECT COUNT(*) AS count,SUM(size) AS size,SUM(allocated_size) AS allocated,
-      SUM(kind='file') AS files,SUM(kind='folder') AS folders FROM nodes WHERE scan_id=? AND parent_id=?`)
-      .get(scanId,parentId) as {count:number;size:number;allocated:number;files:number;folders:number};
-    const count=totals.count-visible.length;
-    if (count>0) visible.push({
-      id:-parentId,parentId,name:count.toLocaleString()+' smaller items',path:'',kind:'file',extension:'',category:'Other',
-      size:totals.size-visible.reduce((sum,node)=>sum+node.size,0),
-      allocatedSize:totals.allocated-visible.reduce((sum,node)=>sum+node.allocatedSize,0),
-      modifiedAt:0,attributes:'',itemCount:count,
-      fileCount:totals.files-visible.filter(node=>node.kind==='file').length,
-      folderCount:totals.folders-visible.filter(node=>node.kind==='folder').length,synthetic:true,syntheticKind:'remainder'
-    });
-    return visible;
+    // Bound IPC payload and SVG work even on scans with millions of entries.
+    let remaining = 2500;
+    const readChildren = (parentId: number, level: number): TreemapNode[] => {
+      const rows = db.prepare('SELECT * FROM nodes WHERE parent_id=? ORDER BY size DESC LIMIT 180').all(parentId) as Array<Record<string,unknown>>;
+      const visible: TreemapNode[] = rows.map(mapNode);
+      remaining -= visible.length;
+      if (visible.length === 180) {
+        const totals = db.prepare(`SELECT COUNT(*) AS count,SUM(size) AS size,SUM(allocated_size) AS allocated,
+          SUM(kind='file') AS files,SUM(kind='folder') AS folders FROM nodes WHERE parent_id=?`)
+          .get(parentId) as {count:number;size:number;allocated:number;files:number;folders:number};
+        const count=totals.count-visible.length;
+        if (count>0) { remaining--; visible.push({
+          id:-parentId,parentId,name:count.toLocaleString()+' smaller items',path:'',kind:'file',extension:'',category:'Other',
+          size:totals.size-visible.reduce((sum,node)=>sum+node.size,0),
+          allocatedSize:totals.allocated-visible.reduce((sum,node)=>sum+node.allocatedSize,0),
+          modifiedAt:0,attributes:'',itemCount:count,
+          fileCount:totals.files-visible.filter(node=>node.kind==='file').length,
+          folderCount:totals.folders-visible.filter(node=>node.kind==='folder').length,synthetic:true,syntheticKind:'remainder'
+        }); }
+      }
+      if (level > 1) for (const node of visible) {
+        if (node.kind === "folder" && !node.synthetic && remaining >= 181) {
+          node.children = readChildren(node.id, level - 1);
+        }
+      }
+      return visible;
+    };
+    return readChildren(parentId, depth);
   })();
 }
 
@@ -184,12 +211,12 @@ export function ancestors(scanId: string, nodeId: number): Array<{id:number;name
   const db=openDatabase(scanId);
   return db.transaction(() => {
     const chain: Array<{id:number;name:string}>=[], seen=new Set<number>();
-    const get=db.prepare('SELECT id,name,parent_id FROM nodes WHERE scan_id=? AND id=?');
+    const get=db.prepare('SELECT id,name,parent_id FROM nodes WHERE id=?');
     let cursor: number|null=nodeId;
     while(cursor != null && chain.length<4096) {
       if(seen.has(cursor)) throw new Error('Invalid folder hierarchy. Rescan this location.');
       seen.add(cursor);
-      const node=get.get(scanId,cursor) as {id:number;name:string;parent_id:number|null}|undefined;
+      const node=get.get(cursor) as {id:number;name:string;parent_id:number|null}|undefined;
       if(!node) throw new Error('This folder is no longer indexed.');
       chain.unshift({id:node.id,name:node.name}); cursor=node.parent_id;
     }
@@ -203,7 +230,7 @@ export function reconcileRemoval(scanId: string, nodeId: number): void {
   db.pragma('cache_size = -8192');db.pragma('temp_store = FILE');
   try {
     db.transaction(()=>{
-      const row=db.prepare('SELECT * FROM nodes WHERE scan_id=? AND id=?').get(scanId,nodeId) as Record<string,unknown>|undefined;
+      const row=db.prepare('SELECT * FROM nodes WHERE id=?').get(nodeId) as Record<string,unknown>|undefined;
       if(!row) return;
       const node=mapNode(row);
       if(node.parentId==null) throw new Error('The scan root cannot be removed.');
@@ -217,8 +244,8 @@ export function reconcileRemoval(scanId: string, nodeId: number): void {
         WHERE id IN (SELECT id FROM ancestors WHERE id IS NOT NULL)`)
         .run(nodeId,node.size,node.allocatedSize,files,folders,files+folders);
       db.prepare(`WITH RECURSIVE doomed(id) AS (
-        SELECT ? UNION ALL SELECT n.id FROM nodes n JOIN doomed d ON n.parent_id=d.id WHERE n.scan_id=?
-      ) DELETE FROM nodes WHERE id IN (SELECT id FROM doomed)`).run(nodeId,scanId);
+        SELECT ? UNION ALL SELECT n.id FROM nodes n JOIN doomed d ON n.parent_id=d.id
+      ) DELETE FROM nodes WHERE id IN (SELECT id FROM doomed)`).run(nodeId);
       db.prepare(`UPDATE scan_runs SET total_size=MAX(0,total_size-?),allocated_size=MAX(0,allocated_size-?),
         file_count=MAX(0,file_count-?),folder_count=MAX(0,folder_count-?) WHERE id=?`)
         .run(node.size,node.allocatedSize,files,folders,scanId);

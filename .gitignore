@@ -11,3 +11,6 @@ coverage/
 .idea/
 .vscode/
 .benchmark-*/
+build/native/
+.bench/
+.zcode/
