@@ -63,6 +63,13 @@ async function run() {
   await js("const first=document.querySelector('.treemap-cell'); first.focus()");
   await delay(100);
   assert(await js("return document.querySelector('.map-details').textContent.includes('Games')"),'Focus shows metadata');
+  const gamesPath=path.join(fixture,'Games');
+  assert.equal(await js('return document.querySelector(".map-path").textContent'),gamesPath,'Focus shows the full folder path');
+  assert((await js('return document.querySelector(".treemap-cell title").textContent')).includes(gamesPath),'Hover tooltip includes the full path');
+  await js('document.querySelectorAll(".treemap-cell")[1].dispatchEvent(new MouseEvent("mouseover",{bubbles:true}))');
+  await delay(100);
+  assert.equal(await js('return document.querySelector(".map-path").textContent'),path.join(fixture,'Study videos'),'Hover updates the full path');
+
   await js("const input=document.querySelector('.map-search input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(input,'Music');input.dispatchEvent(new Event('input',{bubbles:true}));");
   await delay(100);
   assert.equal(await js("return Array.from(document.querySelectorAll('.treemap-cell')).filter(cell=>cell.getAttribute('opacity')==='1').length"),1,'Search highlights one match without relayout');

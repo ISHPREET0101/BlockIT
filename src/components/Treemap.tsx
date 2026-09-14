@@ -142,7 +142,7 @@ export const TreemapView = memo(function TreemapView({ depth, onDepthChange, nod
                   cells?.[(index+step+leaves.length)%leaves.length]?.focus();
                 }
               }}>
-              <title>{node.name+' — '+formatBytes(sizeOf(node),settings.unit)+' ('+share(node)+')'}</title>
+              <title>{node.name+' — '+formatBytes(sizeOf(node),settings.unit)+' ('+share(node)+')'+(!node.synthetic && node.path ? '\n'+node.path : '')}</title>
               <defs><clipPath id={clip}><rect x="10" y="8" width={Math.max(0,width-20)} height={Math.max(0,height-16)}/></clipPath></defs>
               <rect className="block-outline" x="1.5" y="1.5" width={Math.max(0,width-3)} height={Math.max(0,height-3)} rx="8"
                 fill={free?'url(#'+instance+'-free)':color} stroke={active?ink:background} strokeWidth={active?3:1}/>
@@ -156,7 +156,7 @@ export const TreemapView = memo(function TreemapView({ depth, onDepthChange, nod
         </svg>
       </div>}
     <div className="map-details" aria-live="polite" aria-atomic="true">
-      {active ? <><i style={{background:colorOf(active)}}/><strong>{active.name}</strong><span>{formatBytes(sizeOf(active),settings.unit)} · {share(active)} of displayed space</span><span className="map-caption">{active.syntheticKind==='free'?'Free space':active.synthetic?'Grouped items':active.kind==='folder'?active.fileCount.toLocaleString()+' files · '+active.folderCount.toLocaleString()+' folders':active.category}</span></> :
+      {active ? <><i style={{background:colorOf(active)}}/><strong>{active.name}</strong><span>{formatBytes(sizeOf(active),settings.unit)} · {share(active)} of displayed space</span><span className="map-caption">{active.syntheticKind==='free'?'Free space':active.synthetic?'Grouped items':active.kind==='folder'?active.fileCount.toLocaleString()+' files · '+active.folderCount.toLocaleString()+' folders':active.category}</span>{!active.synthetic && active.path && <span className="map-path" title={active.path}>{active.path}</span>}</> :
       <span className="map-caption">Hover or focus a block for details. Use arrow keys to move, Enter to open, Escape to clear. Stripes indicate free space.</span>}
     </div>
     <details className="map-block-list">
