@@ -170,73 +170,39 @@ export function getSummary(scanId: string): ScanSummary {
   })();
 }
 
-export function treemapChildren(scanId: string, parentId: number): TreemapNode[] {
+export function treemapChildren(scanId: string, parentId: number, depth = 1): TreemapNode[] {
+  if (!Number.isInteger(depth) || depth < 1 || depth > 3) throw new Error("Invalid treemap depth");
   nodeIdentifier(parentId);
   const db = openDatabase(scanId);
   return db.transaction(() => {
-    const rows = db.prepare('SELECT * FROM nodes WHERE parent_id=? ORDER BY size DESC LIMIT 180').all(parentId) as Array<Record<string,unknown>>;
-    const visible: TreemapNode[] = rows.map(mapNode);
-    if (visible.length < 180) return visible;
-    const totals = db.prepare(`SELECT COUNT(*) AS count,SUM(size) AS size,SUM(allocated_size) AS allocated,
-      SUM(kind='file') AS files,SUM(kind='folder') AS folders FROM nodes WHERE parent_id=?`)
-      .get(parentId) as {count:number;size:number;allocated:number;files:number;folders:number};
-    const count=totals.count-visible.length;
-    if (count>0) visible.push({
-      id:-parentId,parentId,name:count.toLocaleString()+' smaller items',path:'',kind:'file',extension:'',category:'Other',
-      size:totals.size-visible.reduce((sum,node)=>sum+node.size,0),
-      allocatedSize:totals.allocated-visible.reduce((sum,node)=>sum+node.allocatedSize,0),
-      modifiedAt:0,attributes:'',itemCount:count,
-      fileCount:totals.files-visible.filter(node=>node.kind==='file').length,
-      folderCount:totals.folders-visible.filter(node=>node.kind==='folder').length,synthetic:true,syntheticKind:'remainder'
-    });
-    return visible;
-  })();
-}
-
-
-// Bounded multi-level subtree for the nested treemap: the biggest children per
-// level, and a synthetic remainder child whenever a folder holds more than is
-// shown, so block areas always add up to the folder's real size. One database
-// holds one scan, so no scan_id filter is needed.
-export function treemapTree(scanId: string, parentId: number, depth: number, budget = 1200): TreemapNode[] {
-  nodeIdentifier(parentId);
-  const levels = Math.max(1, Math.min(3, Math.floor(depth) || 1));
-  const db = openDatabase(scanId);
-  return db.transaction(() => {
-    const cap = [48, 14, 6];
-    const childrenOf = db.prepare('SELECT * FROM nodes WHERE parent_id=? ORDER BY size DESC, id DESC LIMIT ?');
-    const totalsOf = db.prepare(`SELECT COUNT(*) AS count,COALESCE(SUM(size),0) AS size,COALESCE(SUM(allocated_size),0) AS allocated
-      FROM nodes WHERE parent_id=?`);
-    let used = 0, syntheticId = 0;
-    const build = (pid: number, level: number): TreemapNode[] => {
-      const limit = cap[Math.min(level, cap.length - 1)];
-      const nodes: TreemapNode[] = (childrenOf.all(pid, limit) as Array<Record<string, unknown>>).map(mapNode);
-      used += nodes.length;
-      const totals = totalsOf.get(pid) as { count: number; size: number; allocated: number };
-      const shownSize = nodes.reduce((sum, node) => sum + node.size, 0);
-      const shownAllocated = nodes.reduce((sum, node) => sum + node.allocatedSize, 0);
-      const hidden = Math.max(totals.count - nodes.length, 0);
-      if (hidden > 0 || totals.size - shownSize > 0) {
-        nodes.push({
-          id: -(++syntheticId), parentId: pid, name: Math.max(hidden, 1).toLocaleString() + ' smaller items',
-          path: '', kind: 'file', extension: '', category: 'Other',
-          size: Math.max(0, totals.size - shownSize), allocatedSize: Math.max(0, totals.allocated - shownAllocated),
-          modifiedAt: 0, attributes: '', itemCount: Math.max(hidden, 1),
-          fileCount: 0, folderCount: 0, synthetic: true, syntheticKind: 'remainder',
-        });
-        used += 1;
+    // Bound IPC payload and SVG work even on scans with millions of entries.
+    let remaining = 2500;
+    const readChildren = (parentId: number, level: number): TreemapNode[] => {
+      const rows = db.prepare('SELECT * FROM nodes WHERE parent_id=? ORDER BY size DESC LIMIT 180').all(parentId) as Array<Record<string,unknown>>;
+      const visible: TreemapNode[] = rows.map(mapNode);
+      remaining -= visible.length;
+      if (visible.length === 180) {
+        const totals = db.prepare(`SELECT COUNT(*) AS count,SUM(size) AS size,SUM(allocated_size) AS allocated,
+          SUM(kind='file') AS files,SUM(kind='folder') AS folders FROM nodes WHERE parent_id=?`)
+          .get(parentId) as {count:number;size:number;allocated:number;files:number;folders:number};
+        const count=totals.count-visible.length;
+        if (count>0) { remaining--; visible.push({
+          id:-parentId,parentId,name:count.toLocaleString()+' smaller items',path:'',kind:'file',extension:'',category:'Other',
+          size:totals.size-visible.reduce((sum,node)=>sum+node.size,0),
+          allocatedSize:totals.allocated-visible.reduce((sum,node)=>sum+node.allocatedSize,0),
+          modifiedAt:0,attributes:'',itemCount:count,
+          fileCount:totals.files-visible.filter(node=>node.kind==='file').length,
+          folderCount:totals.folders-visible.filter(node=>node.kind==='folder').length,synthetic:true,syntheticKind:'remainder'
+        }); }
       }
-      if (level + 1 < levels) {
-        for (const node of nodes) {
-          if (used >= budget) break;
-          if (node.synthetic || node.kind !== 'folder') continue;
-          const children = build(node.id, level + 1);
-          if (children.length) node.children = children;
+      if (level > 1) for (const node of visible) {
+        if (node.kind === "folder" && !node.synthetic && remaining >= 181) {
+          node.children = readChildren(node.id, level - 1);
         }
       }
-      return nodes;
+      return visible;
     };
-    return build(parentId, 0);
+    return readChildren(parentId, depth);
   })();
 }
 

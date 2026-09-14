@@ -605,10 +605,13 @@ async function run() {
     VALUES (?,?,?,'scanning',?,?,?)`).run(data.scanId,data.root,path.basename(data.root)||data.root,startedAt,data.volumeTotalBytes,data.volumeFreeBytes);
   // Helper startup overlaps root validation and schema creation.
   const laneCount=Math.max(1,Math.min(data.lanes??Math.min(8,Math.max(2,(os.availableParallelism?.()??os.cpus().length)>>1)),16));
-  for(let i=0;i<laneCount;i++) lanes.push({reader:undefined});
+  const tryVolume=process.platform==='win32' && data.metadataEngine!=='portable' && /^[a-zA-Z]:\\?$/i.test(data.root) && process.env.BLOCKIT_FORCE_WALK!=='1';
+  // Direct NTFS enumeration uses one helper; start walk lanes only on fallback.
+  const initialLaneCount=tryVolume?1:laneCount;
+  for(let i=0;i<initialLaneCount;i++) lanes.push({reader:undefined});
   if(process.platform==='win32' && data.metadataEngine!=='portable' && !cancelled) {
     const helper=data.nativeHelperPath || path.join(__dirname,'../build/native/blockit-enumerator.exe');
-    for(let i=0;i<laneCount;i++) lanes[i].reader=new NativeDirectoryReader(helper);
+    for(const lane of lanes) lane.reader=new NativeDirectoryReader(helper);
     // Startup failures surface through each lane's ready await; mark the
     // rejections handled so a slow lane start cannot crash the worker first.
     for(const lane of lanes) lane.reader?.ready.catch(()=>{});
@@ -629,7 +632,7 @@ async function run() {
   // folder row already exists and nothing has been emitted, so nothing is
   // duplicated. BLOCKIT_FORCE_WALK=1 opts out for A/B testing.
   let volumeOk=false;
-  if(process.platform==='win32' && data.metadataEngine!=='portable' && lanes[0].reader && /^[a-zA-Z]:\\?$/i.test(data.root) && !cancelled && process.env.BLOCKIT_FORCE_WALK!=='1') {
+  if(tryVolume && lanes[0].reader && !cancelled) {
     inFlight++;
     try {
       engineName='volume';
@@ -649,7 +652,14 @@ async function run() {
       if(!lanes[0].reader) lanes[0].reader=new NativeDirectoryReader(data.nativeHelperPath || path.join(__dirname,'../build/native/blockit-enumerator.exe'));
     }
   }
-  if(!volumeOk) stack.push(rootId);
+  if(!volumeOk && !cancelled) {
+    while(lanes.length<laneCount) {
+      const reader=new NativeDirectoryReader(data.nativeHelperPath || path.join(__dirname,'../build/native/blockit-enumerator.exe'));
+      reader.ready.catch(()=>{});
+      lanes.push({reader});
+    }
+    stack.push(rootId);
+  }
   await Promise.all(lanes.map((_,i)=>laneLoop(i)));
   // The volume path enumerates through one direct call instead of
   // processDirectory, so the tail of the queued file rows needs its own flush

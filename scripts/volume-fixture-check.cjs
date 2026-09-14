@@ -219,7 +219,9 @@ function assert(condition, message) {
   else console.log('ok   ' + message);
 }
 
-(async () => {
+module.exports = { buildBulkImage };
+
+if (require.main === module) (async () => {
   const helper = path.resolve(__dirname, '../build/native/blockit-enumerator.exe');
   if (!fs.existsSync(helper)) { console.error('helper not built: ' + helper + ' (run npm run build:main first)'); process.exit(1); }
   const base = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'blockit-vol-'));

@@ -38,11 +38,10 @@ Run `npm run test:volume` after building to drive the MFT parser against crafted
 - The helper serializes responses with a hand-written encoder (the reflection-based serializer was the single largest helper cost), and index building moved out of the insert path: rows land in an append-only table during the scan and the five result indexes are built once at the end. Each database holds one scan, so index keys omit the constant scan id. Folder roll-ups run through parent reference counts in memory instead of a queue table, and file rows use multi-row inserts.
 - If the native helper cannot start, scanning continues with the bounded compatibility engine and a warning. A failed reader never replays a partially indexed folder. Native enumeration requests time out; cancellation stops outstanding native requests. A timed-out folder is skipped rather than immediately retried through the compatibility API.
 
-Alternating paired scans against the packaged 1.6 worker measured **2,327 ms → 790 ms** median for **20,000 generated files** (2.9×) and **12,904 ms → 2,166 ms** for **120,000 files across 2,400 folders** (6.0×). Against the original unpaired 1.6 baseline on a 120,000-file flat fixture (21.6 s), the 1.7 worker completes in about 2.2–2.6 s. Small scans are dominated by fixed process startup, so relative gains grow with tree size. See `docs/scanner-comparison-1.7.json`. These warm-cache local tests include helper startup; whole-drive, HDD and network performance will vary. This is standard directory enumeration, not NTFS MFT scanning.
 
 `npm run build:main` compiles the small x64 helper using the Windows .NET Framework C# compiler, then builds Electron code. Windows builds require .NET Framework 4.x and `System.Web.Extensions` (included on supported Windows 10/11 installations). Packaging places the helper beside `app.asar`, outside the archive. Other development platforms use compatibility scanning.
 
-Run `npm run test:native` after building to compare native and compatibility totals, timestamps, Unicode/long paths, junctions, exclusions, fallback, empty/missing folders, bounded batches and helper shutdown. `scripts/compare-v15.cjs` requires the original 1.5.0 `app.asar` in `release/win-unpacked/resources/`; run before packaging replaces that baseline.
+Run `npm run test:native` after building to compare native and compatibility totals, timestamps, Unicode/long paths, junctions, exclusions, fallback, empty/missing folders, bounded batches and helper shutdown.
 
 ## Fast scanning and the advanced treemap (1.9)
 
@@ -79,7 +78,6 @@ npm run test:drive          # elevated whole-drive check (needs an admin shell)
 - Startup preferences no longer wait for drive discovery. Treemap rendering is memoized, and file-type colour mode survives folder navigation.
 - Administrator relaunch waits for the UAC outcome instead of closing the app on a timer. Interactive UAC acceptance/cancellation still requires manual Windows validation.
 
-The paired generated-data comparison in `docs/optimization-comparison.json` measured median scan times of **1,696 ms → 1,300 ms** (4,000 files, three trials). Twenty pages of queries over 200,000 equal-size-heavy metadata rows measured **6,868 ms → 21 ms**. These are specific local fixtures with cached filesystem data, not a promise of whole-drive speed or laptop-wide memory usage.
 
 After `npm run build`, run:
 
@@ -91,7 +89,7 @@ npm run test:performance
 npm run test:ui
 ```
 
-`lint` uses TypeScript's strict unused-code checks. Regression tests cover warning continuation, Unicode/long paths, junction exclusion, query validation, stable pagination, cache invalidation, complete CSV exports, settings races, path changes, and mocked file actions. The paired benchmark script `scripts/compare-v14.cjs` requires the original 1.4.0 `app.asar` in `release/win-unpacked/resources/`; run it before replacing that packaged baseline.
+`lint` uses TypeScript's strict unused-code checks. Regression tests cover warning continuation, Unicode/long paths, junction exclusion, query validation, stable pagination, cache invalidation, complete CSV exports, settings races, path changes, and mocked file actions.
 
 ## Interactive treemap (1.4)
 

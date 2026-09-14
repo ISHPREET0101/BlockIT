@@ -1,140 +1,67 @@
 import { categoryColors } from './categories';
 import type { TreemapNode } from './types';
 
-// Cartographic block palette (preset 02 Stamen Design): ochre, sage, clay,
-// slate, moss, russet, dusk, pine, brass, pewter. Every tone stays dark enough
-// that white label text passes WCAG AA (contrast >= 4.5:1) on the block.
+// Strong enough for white text; colours identify items without implying a file type.
 export const blockPalette = [
-  '#9c5a1e', '#4f6f4a', '#7d4a2f', '#3f5c6b', '#5f7229',
-  '#8f4534', '#5a4f78', '#33685c', '#7f6420', '#4b5a6b',
+  '#2563eb', '#0f766e', '#b45309', '#7c3aed', '#be185d',
+  '#047857', '#c2410c', '#4338ca', '#0e7490', '#a21caf',
 ];
 
-// Free space and unclassified remainder keep their own cartographic tones.
-export const freeSpaceColor = '#e8dfc6';
-export const remainderColor = '#8a8577';
-
-export type TreemapColorMode = 'item' | 'type' | 'size' | 'age' | 'depth';
-
-export const colorModeLabels: Record<TreemapColorMode, string> = {
-  item: 'Distinct',
-  type: 'Types',
-  size: 'Size',
-  age: 'Age',
-  depth: 'Levels',
-};
-
-// Colours are assigned per sibling group, so adjacent blocks never share a
-// colour while a nested child can reuse a colour from another branch.
 export function blockColors(nodes: TreemapNode[]): Map<number, string> {
-  const colors = new Map<number, string>();
-  const walk = (list: TreemapNode[]) => {
-    const ordered = list.filter(node => !node.synthetic).slice()
-      .sort((a, b) => a.path.localeCompare(b.path) || a.id - b.id);
-    ordered.forEach((node, index) => {
-      colors.set(node.id, blockPalette[index % blockPalette.length]);
-      if (node.children?.length) walk(node.children);
-    });
-  };
-  walk(nodes);
-  return colors;
+  const ordered = nodes.filter(node => !node.synthetic).slice()
+    .sort((a, b) => a.path.localeCompare(b.path) || a.id - b.id);
+  return new Map(ordered.map((node, index) => [node.id, blockPalette[index % blockPalette.length]]));
 }
 
 export function blockColor(node: TreemapNode, colors: Map<number,string>, mode: 'item' | 'type'): string {
-  if (node.synthetic) return node.syntheticKind === 'free' ? freeSpaceColor : remainderColor;
+  if (node.synthetic) return node.syntheticKind === 'free' ? '#dbe7de' : '#64748b';
   if (mode === 'type' && node.kind === 'file') return categoryColors[node.category];
   return colors.get(node.id) || blockPalette[0];
 }
 
-function channel(hex: string, offset: number): number {
-  const value = parseInt(hex.slice(offset, offset + 2), 16) / 255;
-  return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-}
-
-export function luminance(hex: string): number {
-  return channel(hex, 1) * 0.2126 + channel(hex, 3) * 0.7152 + channel(hex, 5) * 0.0722;
-}
-
 export function readableText(hex: string): string {
-  return luminance(hex) > 0.179 ? '#14231c' : '#ffffff';
+  const rgb = [1,3,5].map(offset => {
+    const channel = parseInt(hex.slice(offset,offset+2),16)/255;
+    return channel <= .04045 ? channel/12.92 : ((channel+.055)/1.055)**2.4;
+  });
+  const luminance = rgb[0]*.2126 + rgb[1]*.7152 + rgb[2]*.0722;
+  return luminance > .179 ? '#14231c' : '#ffffff';
 }
-
-function toRgb(hex: string): [number, number, number] {
-  return [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
-}
-function toHex(rgb: [number, number, number]): string {
-  return '#' + rgb.map(value => Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, '0')).join('');
-}
-// Sequential ramp: interpolate through the stops so size and age blocks read as
-// a continuous choropleth rather than a set of unrelated colours.
-export function ramp(stops: string[], t: number): string {
-  const clamped = Math.max(0, Math.min(1, t));
-  const scaled = clamped * (stops.length - 1);
-  const index = Math.min(stops.length - 2, Math.floor(scaled));
-  const local = scaled - index;
-  const a = toRgb(stops[index]);
-  const b = toRgb(stops[index + 1]);
-  return toHex([a[0] + (b[0] - a[0]) * local, a[1] + (b[1] - a[1]) * local, a[2] + (b[2] - a[2]) * local]);
-}
-
-// Size uses a log scale so mid-sized blocks stay distinguishable next to a
-// dominant one; the ramp runs pale sand -> ochre -> deep umber.
-export const sizeRamp = ['#f1e8d5', '#d8b483', '#bd8340', '#9c5a1e', '#6d3a12'];
-export const ageRamp = ['#8a5136', '#9a7439', '#8f8a3f', '#67804a', '#3f685c'];
-export const depthRamp = ['#e6dcc7', '#c9b489', '#a78d55', '#836b3c', '#5f4c26'];
-
-export function sizeColor(value: number, max: number): string {
-  if (max <= 0 || value <= 0) return sizeRamp[0];
-  return ramp(sizeRamp, Math.log10(1 + value) / Math.log10(1 + max));
-}
-export function ageColor(modifiedAt: number, now: number, spanMs: number): string {
-  if (!modifiedAt) return ageRamp[0];
-  const age = Math.max(0, Math.min(1, spanMs > 0 ? (now - modifiedAt) / spanMs : 0));
-  return ramp(ageRamp, 1 - age);
-}
-export function depthColor(depth: number): string {
-  return depthRamp[Math.max(0, Math.min(depthRamp.length - 1, depth - 1))];
-}
-
-interface ColorContext {
-  colors: Map<number, string>;
-  mode: TreemapColorMode;
-  maxSize: number;
-  now: number;
-  ageSpanMs: number;
-  depth: number;
-}
-
-export function treemapFill(node: TreemapNode, context: ColorContext): string {
-  if (node.synthetic) return node.syntheticKind === 'free' ? freeSpaceColor : remainderColor;
-  switch (context.mode) {
-    case 'type': return node.kind === 'file' ? categoryColors[node.category] : blockColor(node, context.colors, 'item');
-    case 'size': return sizeColor(Math.max(node.size, node.allocatedSize), context.maxSize);
-    case 'age': return ageColor(node.modifiedAt, context.now, context.ageSpanMs);
-    case 'depth': return depthColor(context.depth);
-    default: return blockColor(node, context.colors, 'item');
-  }
-}
-
-export interface LegendEntry { label: string; color: string }
-export function legendFor(mode: TreemapColorMode): { kind: 'swatch' | 'ramp'; entries: LegendEntry[]; caption: string } {
-  if (mode === 'type') {
-    return { kind: 'swatch', caption: 'Files share their category colour', entries: (Object.keys(categoryColors) as Array<keyof typeof categoryColors>).map(name => ({ label: name, color: categoryColors[name] })) };
-  }
-  if (mode === 'size') {
-    return { kind: 'ramp', caption: 'Larger blocks are darker', entries: [{ label: 'small', color: sizeRamp[0] }, { label: 'large', color: sizeRamp[sizeRamp.length - 1] }] };
-  }
+export type ColorMode = 'item' | 'type' | 'size' | 'age' | 'level';
+export const sizeColors = ['#0f766e', '#2563eb', '#7c3aed', '#b45309'];
+export const ageColors = ['#047857', '#0e7490', '#b45309', '#be185d', '#64748b'];
+export const levelColors = ['#0f766e', '#7c3aed', '#b45309'];
+export function metricColor(node: TreemapNode, mode: ColorMode, bytes: number, level: number, now = Date.now()): string | undefined {
+  if (mode === 'size') return sizeColors[bytes < 1024**2 ? 0 : bytes < 1024**3 ? 1 : bytes < 1024**4 ? 2 : 3];
+  if (mode === 'level') return levelColors[Math.min(2, Math.max(0, level - 1))];
   if (mode === 'age') {
-    return { kind: 'ramp', caption: 'Newer files lean green, older files lean clay', entries: [{ label: 'older', color: ageRamp[0] }, { label: 'recent', color: ageRamp[ageRamp.length - 1] }] };
+    if (!Number.isFinite(node.modifiedAt) || node.modifiedAt <= 0) return ageColors[4];
+    const days = Math.max(0, now - node.modifiedAt) / 86400000;
+    return ageColors[days < 30 ? 0 : days < 180 ? 1 : days < 365 ? 2 : 3];
   }
-  if (mode === 'depth') {
-    return { kind: 'swatch', caption: 'Each nesting level steps one shade deeper', entries: depthRamp.slice(0, 4).map((color, index) => ({ label: 'level ' + (index + 1), color })) };
-  }
-  return { kind: 'swatch', caption: 'Adjacent folders never share a colour', entries: blockPalette.slice(0, 6).map((color, index) => ({ label: 'block ' + (index + 1), color })) };
 }
-
-// Relative age span used by the age ramp: from the oldest item in view to now.
-export function ageSpan(nodes: Array<{ modifiedAt: number }>, now: number): number {
-  let oldest = now;
-  for (const node of nodes) if (node.modifiedAt > 0) oldest = Math.min(oldest, node.modifiedAt);
-  return Math.max(1, now - oldest);
+export function flattenNodes(nodes: TreemapNode[]): TreemapNode[] {
+  return nodes.flatMap(node => [node, ...flattenNodes(node.children || [])]);
+}
+export interface ColorRect { node: TreemapNode; x0: number; x1: number; y0: number; y1: number; depth: number; }
+// Colour the actual neighbouring rectangles, rather than cycling by file name.
+export function adjacentColors(rects: ColorRect[]): Map<number, string> {
+  const colors = new Map<number, string>();
+  rects.forEach((rect, index) => {
+    if (rect.node.synthetic) return;
+    const used = new Set<string>();
+    for (let j = 0; j < index; j++) {
+      const other = rects[j];
+      if (other.depth !== rect.depth) continue;
+      const vertical = Math.min(rect.y1, other.y1) > Math.max(rect.y0, other.y0);
+      const horizontal = Math.min(rect.x1, other.x1) > Math.max(rect.x0, other.x0);
+      if ((vertical && Math.min(Math.abs(rect.x1-other.x0), Math.abs(other.x1-rect.x0)) <= 8) ||
+          (horizontal && Math.min(Math.abs(rect.y1-other.y0), Math.abs(other.y1-rect.y0)) <= 8)) {
+        const color = colors.get(other.node.id); if (color) used.add(color);
+      }
+    }
+    const ordered = blockPalette.map((_, offset) => blockPalette[(index + offset) % blockPalette.length]);
+    colors.set(rect.node.id, ordered.find(color => !used.has(color)) || ordered[0]);
+  });
+  return colors;
 }

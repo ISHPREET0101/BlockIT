@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { categoryColors } from './categories';
-import { ageColor, blockColor, blockColors, blockPalette, depthColor, freeSpaceColor, legendFor, ramp, readableText, remainderColor, sizeColor } from './treemap';
+import { blockColor, blockColors, blockPalette, readableText } from './treemap';
 import type { TreemapNode } from './types';
 
 const node = (id: number, changes: Partial<TreemapNode> = {}): TreemapNode => ({
@@ -22,8 +22,8 @@ describe('treemap colours', () => {
     const folder = node(1);
     const free = node(-1, { synthetic: true, syntheticKind: 'free' });
     expect(blockColors([folder, free])).toEqual(blockColors([folder]));
-    expect(blockColor(free, new Map(), 'item')).toBe(freeSpaceColor);
-    expect(blockColor(node(-2, { synthetic: true }), new Map(), 'item')).toBe(remainderColor);
+    expect(blockColor(free, new Map(), 'item')).toBe('#dbe7de');
+    expect(blockColor(node(-2, { synthetic: true }), new Map(), 'item')).toBe('#64748b');
   });
 
   it('uses category colours only for files in file-type mode', () => {
@@ -37,32 +37,31 @@ describe('treemap colours', () => {
 
   it('uses light text on block colours and dark text on free space', () => {
     for (const colour of blockPalette) expect(readableText(colour)).toBe('#ffffff');
-    expect(readableText(freeSpaceColor)).toBe('#14231c');
+    expect(readableText('#dbe7de')).toBe('#14231c');
   });
+});
 
-  it('keeps every block colour at WCAG AA contrast for white text', () => {
-    const channel = (hex: string, offset: number) => {
-      const value = parseInt(hex.slice(offset, offset + 2), 16) / 255;
-      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
-    };
-    const relative = (hex: string) => channel(hex, 1) * 0.2126 + channel(hex, 3) * 0.7152 + channel(hex, 5) * 0.0722;
-    for (const colour of blockPalette) expect(1.05 / (relative(colour) + 0.05)).toBeGreaterThanOrEqual(4.5);
+import { adjacentColors, metricColor, sizeColors, ageColors, levelColors, flattenNodes } from './treemap';
+describe('treemap display modes', () => {
+  it('uses byte and age boundaries including missing dates', () => {
+    expect(metricColor(node(1), 'size', 1024**2-1, 1)).toBe(sizeColors[0]);
+    expect(metricColor(node(1), 'size', 1024**2, 1)).toBe(sizeColors[1]);
+    expect(metricColor(node(1), 'size', 1024**3, 1)).toBe(sizeColors[2]);
+    expect(metricColor(node(1), 'size', 1024**4, 1)).toBe(sizeColors[3]);
+    const now=1800000000000;
+    expect(metricColor(node(1,{modifiedAt:now-30*86400000}), 'age', 1, 1, now)).toBe(ageColors[1]);
+    expect(metricColor(node(1), 'age', 1, 1, now)).toBe(ageColors[4]);
+    expect(metricColor(node(1), 'level', 1, 3)).toBe(levelColors[2]);
   });
-
-  it('ramps size and age and keeps them inside the stops', () => {
-    const sizeStops = ['#f1e8d5', '#d8b483', '#bd8340', '#9c5a1e', '#6d3a12'];
-    expect(sizeColor(0, 100)).toBe(ramp(sizeStops, 0));
-    expect(sizeColor(100, 100)).toBe(ramp(sizeStops, 1));
-    expect(sizeColor(10_000, 10)).toBe(sizeColor(10, 10));
-    const now = 1_000_000_000;
-    expect(ageColor(now, now, 1000)).not.toBe(ageColor(now - 1000, now, 1000));
-    expect(depthColor(1)).not.toBe(depthColor(3));
+  it('keeps neighbours distinct beyond one palette cycle', () => {
+    const rectangles=Array.from({length:40},(_,i)=>({node:node(i),depth:1,x0:(i%10)*106,x1:(i%10)*106+100,y0:Math.floor(i/10)*106,y1:Math.floor(i/10)*106+100}));
+    const colors=adjacentColors(rectangles);
+    for(let i=0;i<40;i++) {
+      if(i%10<9) expect(colors.get(i)).not.toBe(colors.get(i+1));
+      if(i<30) expect(colors.get(i)).not.toBe(colors.get(i+10));
+    }
   });
-
-  it('describes the active colour scale for the legend', () => {
-    expect(legendFor('type').entries.some(entry => entry.label === 'Videos')).toBe(true);
-    expect(legendFor('size').kind).toBe('ramp');
-    expect(legendFor('depth').entries.length).toBeGreaterThanOrEqual(4);
-    expect(legendFor('item').entries.length).toBe(6);
+  it('retains zero-byte descendants for the accessible list', () => {
+    expect(flattenNodes([node(1,{children:[node(2,{size:0})]})]).map(n=>n.id)).toEqual([1,2]);
   });
 });

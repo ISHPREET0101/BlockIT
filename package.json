@@ -25,7 +25,8 @@
     "test:ui": "electron scripts/smoke-ui.cjs && electron scripts/smoke-treemap.cjs && electron scripts/smoke-actions.cjs",
     "test:watch": "vitest",
     "package:win": "npm run generate:icon && npm run build && electron-builder --win nsis portable --x64",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "electron-builder install-app-deps",
+    "test:volume-worker": "cross-env ELECTRON_RUN_AS_NODE=1 electron scripts/volume-worker-check.cjs"
   },
   "dependencies": {
     "better-sqlite3": "^12.2.0",
