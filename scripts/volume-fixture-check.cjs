@@ -285,6 +285,26 @@ function assert(condition, message) {
     assert(scan.dirs.length === 1 && scan.dirs[0][2] === 'Users', 'bulk fixture announces exactly the Users directory');
   }
 
+  // 6. Engine handoff on one helper process: after a volume walk completes, a
+  //    directory walk must run on the walk engine rather than inherit the sticky
+  //    volume routing. This is the edge case the sticky flag introduces.
+  {
+    const { child, request, ready } = openHelper(helper, imagePath);
+    await ready;
+    let batch = await request({ op: 'volume', path: 'Q:\\', x: [] });
+    let guard = 0;
+    while (!batch.done && !batch.error && guard++ < 50) batch = await request({ op: 'next' });
+    assert(batch.done, 'engine handoff: volume walk completes first');
+    const walk = await request({ op: 'open', path: base, x: [] });
+    assert(Array.isArray(walk.entries), 'engine handoff: open after a volume walk returns a walk batch');
+    assert(walk.entries.some(entry => entry.n.endsWith('.img')), 'engine handoff: the walk sees real directory entries');
+    let more = walk;
+    guard = 0;
+    while (!more.done && !more.error && guard++ < 50) more = await request({ op: 'next' });
+    assert(more.done, 'engine handoff: the walk continuation terminates');
+    child.kill();
+  }
+
   await fs.promises.rm(base, { recursive: true, force: true });
   console.log(process.exitCode ? 'VOLUME FIXTURE CHECK FAILED' : 'volume fixture check passed');
   setTimeout(() => process.exit(process.exitCode || 0), 200);
