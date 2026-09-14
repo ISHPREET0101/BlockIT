@@ -21,6 +21,7 @@ const api: BlockItApi = {
     summary: (scanId: string) => ipcRenderer.invoke('data:summary', scanId),
     nodes: (query: NodeQuery) => ipcRenderer.invoke('data:nodes', query),
     treemap: (scanId: string, parentId: number) => ipcRenderer.invoke('data:treemap', scanId, parentId),
+    treemapTree: (scanId: string, parentId: number, depth: number) => ipcRenderer.invoke('data:treemap-tree', scanId, parentId, depth),
     warnings: (scanId: string) => ipcRenderer.invoke('data:warnings', scanId),
     ancestors: (scanId: string, nodeId: number) => ipcRenderer.invoke('data:ancestors', scanId, nodeId),
   },

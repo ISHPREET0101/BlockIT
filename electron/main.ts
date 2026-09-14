@@ -456,6 +456,8 @@ function registerIpc(): void {
   ipcMain.handle('data:nodes', (_event, query: NodeQuery) => readQuery('nodes',validateQuery(query)));
   ipcMain.handle('data:ancestors', (_event, scanId: string, nodeId: number) => readQuery('ancestors',scanIdentifier(scanId),nodeIdentifier(nodeId)));
   ipcMain.handle('data:treemap', (_event, scanId: string, parentId: number) => readQuery('treemap',scanId,parentId));
+  ipcMain.handle('data:treemap-tree', (_event, scanId: string, parentId: number, depth: number) =>
+    readQuery('treemapTree', scanIdentifier(scanId), nodeIdentifier(parentId), Math.max(1, Math.min(3, Math.floor(Number(depth) || 1)))));
   ipcMain.handle('data:warnings', (_event, scanId: string) => {
     const db = openDatabase(scanId);
     try { return db.prepare('SELECT path, message FROM warnings WHERE scan_id = ? ORDER BY id DESC LIMIT 200').all(scanId); }

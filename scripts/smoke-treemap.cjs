@@ -63,7 +63,30 @@ async function run() {
   await js("Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('Back to root')).click()");
   await delay(400);
   assert.equal(await js("return document.querySelectorAll('.treemap-cell[data-kind=folder]').length"),6,'Reset returns to root');
-  console.log('PASS: six distinct folder colours, patterned free space, focus details, search highlighting, PNG export, light/dark rendering, keyboard drill-down and reset.');
+  // Nested map: depth 2 draws folder children, depth 1 collapses them.
+  assert((await js("return document.querySelectorAll('.treemap-cell[data-depth=\"2\"]').length"))>0,'Depth 2 renders nested child blocks');
+  await js("Array.from(document.querySelectorAll('.map-segments button')).find(b=>b.textContent==='1').click()");
+  await delay(500);
+  assert.equal(await js("return document.querySelectorAll('.treemap-cell[data-depth=\"2\"]').length"),0,'Depth 1 renders no nested blocks');
+  await js("Array.from(document.querySelectorAll('.map-segments button')).find(b=>b.textContent==='2').click()");
+  await delay(500);
+  assert((await js("return document.querySelectorAll('.treemap-cell[data-depth=\"2\"]').length"))>0,'Depth 2 returns after switching back');
+  const distinctFill=await js("return document.querySelector('.treemap-cell[data-kind=folder] .block-outline').getAttribute('fill')");
+  await js("Array.from(document.querySelectorAll('.map-segments button')).find(b=>b.textContent==='Age').click()");
+  await delay(300);
+  assert((await js("return document.querySelectorAll('.map-legend-item').length"))>=2,'Legend lists the active colour scale');
+  assert(distinctFill!==await js("return document.querySelector('.treemap-cell[data-kind=folder] .block-outline').getAttribute('fill')"),'Colour mode changes block colours');
+  await js("Array.from(document.querySelectorAll('.map-segments button')).find(b=>b.textContent==='Distinct').click()");
+  await delay(300);
+  await js("const r=document.querySelector('.map-filter input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(r,'6');r.dispatchEvent(new Event('input',{bubbles:true}));r.dispatchEvent(new Event('change',{bubbles:true}));");
+  await delay(300);
+  assert((await js("return document.querySelector('.map-legend-hidden')?.textContent||''")).includes('dimmed'),'Min-share filter reports dimmed blocks');
+  await js("const r=document.querySelector('.map-filter input');Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(r,'0');r.dispatchEvent(new Event('input',{bubbles:true}));r.dispatchEvent(new Event('change',{bubbles:true}));");
+  await delay(200);
+  await js("const cell=document.querySelector('.treemap-cell');cell.focus();");
+  await delay(200);
+  assert((await js("return document.querySelector('.treemap-tooltip')?.textContent||''")).includes('Games'),'Focus raises the floating tooltip with block details');
+  console.log('PASS: nested depth control, five colour modes with legend, min-share filter, floating tooltip, six distinct folder colours, patterned free space, focus details, search highlighting, PNG export, light/dark rendering, keyboard drill-down and reset.');
   app.quit();
 }
 run().catch(error=>{console.error(error);app.exit(1);});

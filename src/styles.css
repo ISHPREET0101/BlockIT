@@ -349,3 +349,27 @@ td { height: 52px; font-size: 12px; }
 .map-list-item strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 500; }
 .map-list-item span, .map-list-item small { font-size: 11px; color: var(--muted); }
 @media (max-width: 1000px) { .map-block-list > div { grid-template-columns: 1fr; } .map-block-list summary span { display: none; } }
+
+/* ---- Cartographic treemap (preset 02 Stamen Design) --------------------
+   Warm paper ground, ochre and sage blocks, hairline frames: hierarchy read
+   like terrain bands. Palette lives in src/shared/treemap.ts. */
+.treemap-panel .treemap-wrap { background: linear-gradient(180deg, rgba(91,74,51,.07), rgba(91,74,51,.015)); }
+:root[data-theme='dark'] .treemap-panel .treemap-wrap { background: linear-gradient(180deg, rgba(233,226,210,.05), rgba(233,226,210,.015)); }
+.treemap-cell { transition: opacity .16s ease, filter .16s ease; cursor: pointer; outline: none; }
+.treemap-cell.container { cursor: zoom-in; }
+.treemap-cell:hover .block-outline { filter: brightness(1.07) saturate(1.04); }
+.treemap-cell:focus-visible .block-outline { stroke-width: 4; }
+.treemap-cell[data-kind='free'] { cursor: default; }
+.map-segments button { display: inline-flex; align-items: center; gap: 5px; }
+.map-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 10px 18px; border-bottom: 1px solid var(--border-soft); font-size: 11px; color: var(--muted); }
+.map-legend-caption { font-weight: 600; color: var(--muted-2); }
+.map-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.map-legend-item i { width: 11px; height: 11px; border-radius: 3px; border: 1px solid rgba(0,0,0,.18); }
+.map-legend-hidden { margin-left: auto; color: var(--muted-2); }
+.map-filter { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
+.map-filter input[type='range'] { width: 96px; accent-color: var(--purple); }
+.map-filter span { min-width: 34px; font-variant-numeric: tabular-nums; }
+.treemap-tooltip.floating { position: absolute; left: 0; top: 0; bottom: auto; display: none; max-width: 330px; z-index: 6; pointer-events: none; }
+.treemap-tooltip.floating.visible { display: grid; }
+.treemap-tooltip .tip-path { font-size: 10px; color: var(--muted-2); word-break: break-all; }
+@media (max-width: 1000px) { .map-legend-hidden { margin-left: 0; } .map-filter input[type='range'] { width: 72px; } }

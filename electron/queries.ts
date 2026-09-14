@@ -193,6 +193,53 @@ export function treemapChildren(scanId: string, parentId: number): TreemapNode[]
   })();
 }
 
+
+// Bounded multi-level subtree for the nested treemap: the biggest children per
+// level, and a synthetic remainder child whenever a folder holds more than is
+// shown, so block areas always add up to the folder's real size. One database
+// holds one scan, so no scan_id filter is needed.
+export function treemapTree(scanId: string, parentId: number, depth: number, budget = 1200): TreemapNode[] {
+  nodeIdentifier(parentId);
+  const levels = Math.max(1, Math.min(3, Math.floor(depth) || 1));
+  const db = openDatabase(scanId);
+  return db.transaction(() => {
+    const cap = [48, 14, 6];
+    const childrenOf = db.prepare('SELECT * FROM nodes WHERE parent_id=? ORDER BY size DESC, id DESC LIMIT ?');
+    const totalsOf = db.prepare(`SELECT COUNT(*) AS count,COALESCE(SUM(size),0) AS size,COALESCE(SUM(allocated_size),0) AS allocated
+      FROM nodes WHERE parent_id=?`);
+    let used = 0, syntheticId = 0;
+    const build = (pid: number, level: number): TreemapNode[] => {
+      const limit = cap[Math.min(level, cap.length - 1)];
+      const nodes: TreemapNode[] = (childrenOf.all(pid, limit) as Array<Record<string, unknown>>).map(mapNode);
+      used += nodes.length;
+      const totals = totalsOf.get(pid) as { count: number; size: number; allocated: number };
+      const shownSize = nodes.reduce((sum, node) => sum + node.size, 0);
+      const shownAllocated = nodes.reduce((sum, node) => sum + node.allocatedSize, 0);
+      const hidden = Math.max(totals.count - nodes.length, 0);
+      if (hidden > 0 || totals.size - shownSize > 0) {
+        nodes.push({
+          id: -(++syntheticId), parentId: pid, name: Math.max(hidden, 1).toLocaleString() + ' smaller items',
+          path: '', kind: 'file', extension: '', category: 'Other',
+          size: Math.max(0, totals.size - shownSize), allocatedSize: Math.max(0, totals.allocated - shownAllocated),
+          modifiedAt: 0, attributes: '', itemCount: Math.max(hidden, 1),
+          fileCount: 0, folderCount: 0, synthetic: true, syntheticKind: 'remainder',
+        });
+        used += 1;
+      }
+      if (level + 1 < levels) {
+        for (const node of nodes) {
+          if (used >= budget) break;
+          if (node.synthetic || node.kind !== 'folder') continue;
+          const children = build(node.id, level + 1);
+          if (children.length) node.children = children;
+        }
+      }
+      return nodes;
+    };
+    return build(parentId, 0);
+  })();
+}
+
 export function ancestors(scanId: string, nodeId: number): Array<{id:number;name:string}> {
   nodeIdentifier(nodeId);
   const db=openDatabase(scanId);

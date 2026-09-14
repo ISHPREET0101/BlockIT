@@ -50,6 +50,7 @@ function App() {
   const [parentId, setParentId] = useState<number | null>(null);
   const [breadcrumbs, setBreadcrumbs] = useState<Array<{ id: number; name: string }>>([]);
   const [treemapNodes, setTreemapNodes] = useState<TreemapNode[]>([]);
+  const [treemapDepth, setTreemapDepth] = useState(2);
   const [result, setResult] = useState<QueryResult | null>(null);
   const [resultKey, setResultKey] = useState('');
   const [queryError, setQueryError] = useState('');
@@ -193,9 +194,9 @@ function App() {
   useEffect(() => {
     if (!scanId || parentId == null || view!=='treemap' || !settings.showTreemap || debouncedSearch.trim()) return;
     let alive = true;
-    void window.blockit.data.treemap(scanId, parentId).then((nodes) => { if (alive) {setTreemapNodes(nodes);setTreeKey(scanId+':'+parentId);} }).catch(error => { if (alive) {setTreemapNodes([]);showResult({ok:false,message:String(error)});} });
+    void window.blockit.data.treemapTree(scanId, parentId, treemapDepth).then((nodes) => { if (alive) {setTreemapNodes(nodes);setTreeKey(scanId+':'+parentId+':'+treemapDepth);} }).catch(error => { if (alive) {setTreemapNodes([]);showResult({ok:false,message:String(error)});} });
     return () => { alive = false; };
-  }, [scanId, parentId, refreshVersion,view,settings.showTreemap,debouncedSearch]);
+  }, [scanId, parentId, refreshVersion,view,settings.showTreemap,debouncedSearch,treemapDepth]);
 
   useEffect(() => { setPage(1); setSelected(null); }, [view, search, extension, kind, selectedCategory, parentId, settings.largeFileThreshold, settings.oldFileDays, sortBy, sortDir]);
   useEffect(() => { if (toast) { const timer = setTimeout(() => setToast(null), 3600); return () => clearTimeout(timer); } }, [toast]);
@@ -263,7 +264,7 @@ function App() {
   const isScanning = isStarting || progress?.status === 'scanning' || progress?.status === 'cancelling' || progress?.status === 'paused';
   const currentTitle = navItems.find((item) => item.id === view)?.label || 'Overview';
   const displayedTreemapNodes = useMemo<TreemapNode[]>(() => {
-    if(treeKey!==scanId+':'+parentId) return [];
+    if(treeKey!==scanId+':'+parentId+':'+treemapDepth) return [];
     if (!settings.showFreeSpace || !summary || parentId !== summary.rootId || summary.volumeFreeBytes <= 0 || !/^[a-z]:\\$/i.test(summary.rootPath)) return treemapNodes;
     return [...treemapNodes, {
       id: -9_007_199_254_740_000,
@@ -283,7 +284,7 @@ function App() {
       synthetic: true,
       syntheticKind: 'free',
     }];
-  }, [treemapNodes, settings.showFreeSpace, summary, parentId,treeKey,scanId]);
+  }, [treemapNodes, settings.showFreeSpace, summary, parentId,treeKey,scanId,treemapDepth]);
   const onMapOpen=useCallback((node:TreemapNode)=>node.kind==='folder'?void openNode(node):setSelected(node),[openNode]);
   const onMapReset=useCallback(()=>{if(summary)selectCrumb(summary.rootId);},[summary?.rootId,selectCrumb]);
   const onMapExport=useCallback(async(dataUrl:string)=>showResult(await window.blockit.actions.exportTreemap(dataUrl)),[showResult]);
@@ -388,6 +389,7 @@ function App() {
 
             {view === 'treemap' && settings.showTreemap && !debouncedSearch.trim() && (
               <TreemapView nodes={displayedTreemapNodes} title={breadcrumbs.at(-1)?.name || summary?.label || 'Storage'} settings={settings}
+                depth={treemapDepth} onDepthChange={setTreemapDepth}
                 canReset={breadcrumbs.length > 1} onOpen={onMapOpen} onReset={onMapReset} onExport={onMapExport} />
             )}
 
