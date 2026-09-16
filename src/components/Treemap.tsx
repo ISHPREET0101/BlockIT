@@ -7,6 +7,7 @@ import { categoryColors } from '../shared/categories';
 import type { AppSettings, TreemapNode } from '../shared/types';
 
 interface TreemapProps {
+  loading?: boolean;
   depth: number;
   onDepthChange(depth: number): void;
   nodes: TreemapNode[];
@@ -20,7 +21,7 @@ interface TreemapProps {
 }
 interface LayoutDatum { node?: TreemapNode; children?: LayoutDatum[]; }
 
-export const TreemapView = memo(function TreemapView({ depth, onDepthChange, nodes, title, settings, canReset, onOpen, onReset, onExport, onCopyPath }: TreemapProps) {
+export const TreemapView = memo(function TreemapView({ loading, depth, onDepthChange, nodes, title, settings, canReset, onOpen, onReset, onExport, onCopyPath }: TreemapProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const instance = useId().replace(/:/g,'');
   const [activeId, setActiveId] = useState<number | null>(null);
@@ -108,7 +109,7 @@ export const TreemapView = memo(function TreemapView({ depth, onDepthChange, nod
     </div>
     <div className="map-legend" aria-label="Colour legend"><span>{mode==='item' ? 'Adjacent folders use different colours' : mode==='type' ? 'File categories; folders keep distinct colours' : mode==='age' ? 'Time since last modification' : mode==='size' ? 'Block size' : 'Depth below the current folder'}</span>{legend.map(({label,color})=><span key={label}><i style={{background:color}}/>{label}</span>)}</div>
     {exportError && <p role="alert" className="map-mode-note">{exportError}</p>}
-    {!leaves.length ? <div className="empty-visual"><Focus size={34}/><span>{minimum ? 'No blocks meet this size. Lower the minimum or use the list below.' : 'No sized items yet. Empty items remain available in the list below.'}</span></div> :
+    {!leaves.length ? <div className="empty-visual"><Focus size={34}/><span>{minimum ? 'No blocks meet this size. Lower the minimum or use the list below.' : loading ? 'Preparing your storage map…' : 'No sized items yet. Empty items remain available in the list below.'}</span></div> :
       <div className="treemap-wrap">
         <svg ref={svgRef} viewBox="0 0 1200 560" role="group" aria-label={'Interactive storage map for '+title}>
           <defs>

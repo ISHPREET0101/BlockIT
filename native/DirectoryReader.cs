@@ -152,13 +152,15 @@ internal static class DirectoryReader
         public int Parent;
         public string Name;
         public long Modified;
+        public string Path;
     }
 
     // Subtree walk state for the current open request. Index 0 is the request
     // root; children are walked breadth-first inside the helper up to
     // PrefetchDirs, so a huge subtree cannot queue unbounded work here —
-    // anything beyond the cap is reported as pending for the caller.
+    // only the active frontier counts against the cap; completed slots are reused.
     private static readonly List<WalkDir> walk = new List<WalkDir>();
+    private static readonly Queue<int> freeWalkSlots = new Queue<int>();
     private static readonly Queue<int> frontier = new Queue<int>();
     private static readonly List<string> excluded = new List<string>();
     private static int activeIndex = -1;
@@ -206,14 +208,14 @@ internal static class DirectoryReader
         {
             Close();
             self = null;
-            walk.Clear(); frontier.Clear(); excluded.Clear();
+            walk.Clear(); freeWalkSlots.Clear(); frontier.Clear(); excluded.Clear();
             activeIndex = -1; walkComplete = false;
             foreach (string ex in excludeList) excluded.Add(ex);
             // Root exclusion: nothing to walk.
             bool rootExcluded = false;
             foreach (string ex in excluded)
                 if (string.Equals(directory.TrimEnd('\\'), ex.TrimEnd('\\'), StringComparison.OrdinalIgnoreCase)) { rootExcluded = true; break; }
-            walk.Add(new WalkDir { Parent = -1, Name = directory, Modified = 0 });
+            walk.Add(new WalkDir { Parent = -1, Name = directory, Modified = 0, Path = directory });
             string pattern = Extended(directory).TrimEnd('\\') + @"\*";
             handle = FindFirstFileExW(pattern, 1, out current, 0, IntPtr.Zero, 2);
             error = handle == Invalid ? Marshal.GetLastWin32Error() : 0;
@@ -224,7 +226,7 @@ internal static class DirectoryReader
             }
             if (handle != Invalid) self = Probe(directory);
             if (rootExcluded) { Close(); walkComplete = true; }
-            else if (handle != Invalid) frontier.Enqueue(0);
+            else if (handle != Invalid) activeIndex = 0; // Reuse the root handle already opened and probed.
             else walkComplete = true;
         }
         Out.Length = 0;
@@ -237,7 +239,7 @@ internal static class DirectoryReader
             {
                 if (frontier.Count == 0) { walkComplete = true; break; }
                 int index = frontier.Dequeue();
-                string dirPath = index == 0 ? walk[0].Name : ParentPath(index);
+                string dirPath = ParentPath(index);
                 string pattern = Extended(dirPath).TrimEnd('\\') + @"\*";
                 handle = FindFirstFileExW(pattern, 1, out current, 0, IntPtr.Zero, 2);
                 int openError = handle == Invalid ? Marshal.GetLastWin32Error() : 0;
@@ -253,6 +255,7 @@ internal static class DirectoryReader
             }
             if (current.Name != "." && current.Name != "..")
             {
+                count++; // Bound wide directory-only batches as well as file batches.
                 uint a = current.Attributes;
                 bool folder = (a & 16) != 0, reparse = (a & 1024) != 0;
                 bool link = reparse && (folder || current.ReparseTag == 0xA000000C || current.ReparseTag == 0xA0000003);
@@ -263,7 +266,6 @@ internal static class DirectoryReader
                     // their rows exactly once.
                     if (!first) Out.Append(',');
                     first = false;
-                    count++;
                     AppendEntry(activeIndex, current.Name, a, current.Modified / 10000L - 11644473600000L,
                         ((long)current.SizeHigh << 32) | current.SizeLow, folder, reparse);
                 }
@@ -275,14 +277,17 @@ internal static class DirectoryReader
                     long modified = current.Modified / 10000L - 11644473600000L;
                     if (!Excluded(ParentPath(activeIndex), name))
                     {
-                        var info = new WalkDir { Parent = activeIndex, Name = name, Modified = modified };
-                        int index = walk.Count;
-                        walk.Add(info);
+                        string parentPath = ParentPath(activeIndex);
+                        var info = new WalkDir { Parent = activeIndex, Name = name, Modified = modified,
+                            Path = parentPath.EndsWith("\\") ? parentPath + name : parentPath + "\\" + name };
+                        int index;
+                        if (freeWalkSlots.Count > 0) { index = freeWalkSlots.Dequeue(); walk[index] = info; }
+                        else { index = walk.Count; walk.Add(info); }
                         // dirs entries are walked here and completed through
                         // doneDirs; beyond-cap dirs are the caller's job and
                         // must appear only in pending — announcing them in
                         // both would duplicate their rows caller-side.
-                        if (walk.Count <= PrefetchDirs) { frontier.Enqueue(index); dirsOut.Add(index); }
+                        if (frontier.Count < PrefetchDirs - 1) { frontier.Enqueue(index); dirsOut.Add(index); }
                         else pendingOut.Add(index);
                     }
                 }
@@ -352,6 +357,10 @@ internal static class DirectoryReader
                 + " dirs=" + dirsOut.Count + " pending=" + pendingOut.Count + " doneDirs=" + doneOut.Count + " done=" + walkComplete);
 #endif
         Console.WriteLine(Out.ToString());
+        // Reuse only slots completed in an earlier response, never within the
+        // same batch: entries and directory announcements share these indices.
+        foreach (int index in doneOut) { walk[index] = null; freeWalkSlots.Enqueue(index); }
+        foreach (int index in pendingOut) { walk[index] = null; freeWalkSlots.Enqueue(index); }
     }
 
     // ===================== Volume (MFT) fast scan =====================
@@ -734,6 +743,7 @@ internal static class DirectoryReader
                     if (kind == 2)
                     {
                         if (IsExcludedDir(parentPath, name)) continue;
+                        count++; // Directories count toward the response bound too.
                         int walkIndex = volNextWalk++;
                         if (slot.Announced == null) slot.Announced = new List<int[]>();
                         slot.Announced.Add(new[] { kid, walkIndex });
@@ -956,6 +966,13 @@ internal static class DirectoryReader
         IntPtr handle = OpenVolumeHandle(path);
         bool admin = handle != Invalid;
         bool ntfs = false;
+        // Filesystem detection does not need raw-volume access. Otherwise a
+        // normal user gets {admin:false,ntfs:false} and never sees the fast-scan offer.
+        if (!admin)
+        {
+            try { ntfs = string.Equals(new System.IO.DriveInfo(path.Substring(0, 2) + "\\").DriveFormat, "NTFS", StringComparison.OrdinalIgnoreCase); }
+            catch { }
+        }
         if (admin)
         {
             try
@@ -987,25 +1004,15 @@ internal static class DirectoryReader
 
     private static string ParentPath(int index)
     {
-        // Compose the full path by walking parents; depth is small.
-        var parts = new List<string>();
-        int cursor = index;
-        while (cursor > 0) { parts.Add(walk[cursor].Name); cursor = walk[cursor].Parent; }
-        string root = walk[0].Name;
-        var builder = new StringBuilder(root);
-        for (int i = parts.Count - 1; i >= 0; i--)
-        {
-            if (!builder.ToString().EndsWith("\\")) builder.Append('\\');
-            builder.Append(parts[i]);
-        }
-        return builder.ToString();
+        // Full paths are retained only for the bounded active frontier. Parent
+        // slots can be recycled after their completion response is serialized.
+        return walk[index].Path;
     }
 
     private static void Main(string[] args)
     {
         Console.InputEncoding = new UTF8Encoding(false);
         Console.OutputEncoding = new UTF8Encoding(false);
-        try { Process.GetCurrentProcess().PriorityClass = ProcessPriorityClass.BelowNormal; } catch { }
         // Stop even if a network provider is blocked when the owning app exits.
         Timer watchdog = null;
         int parent;
@@ -1028,6 +1035,7 @@ internal static class DirectoryReader
         {
             Console.WriteLine("{\"ready\":1}");
             string line;
+            bool volumeMode = false;
             while ((line = Console.ReadLine()) != null)
             {
                 var request = json.Deserialize<Dictionary<string, object>>(line);
@@ -1042,11 +1050,11 @@ internal static class DirectoryReader
                     continue;
                 }
                 if (op != "open" && op != "next" && op != "volume") throw new InvalidOperationException("Unknown request");
-                // A "volume" request starts a volume walk that "next" continues until done;
-                // any "open" returns to the directory-walk engine. Routing "next" by this
-                // persistent flag keeps volume continuations off the walk writer.
-                bool startsVolume = op == "volume";
-                volumeRequest = startsVolume || (op == "next" && volumeRequest);
+                // Continuation requests belong to the engine that opened the
+                // stream. Routing volume "next" to the walk writer truncates it.
+                if (op == "volume") { Close(); volumeMode = true; }
+                else if (op == "open") { volumeMode = false; ReleaseVolume(); }
+                volumeRequest = volumeMode;
                 Interlocked.Exchange(ref requestStarted, Stopwatch.GetTimestamp());
                 var excludeList = new List<string>();
                 if (request.ContainsKey("x"))
@@ -1056,7 +1064,7 @@ internal static class DirectoryReader
                     var rawList = request["x"] as System.Collections.IEnumerable;
                     if (rawList != null) foreach (object item in rawList) excludeList.Add(Convert.ToString(item));
                 }
-                if (volumeRequest) WriteVolumeBatch(startsVolume ? Convert.ToString(request["path"]) : null, excludeList);
+                if (volumeMode) WriteVolumeBatch(op == "volume" ? Convert.ToString(request["path"]) : null, excludeList);
                 else WriteBatch(op == "open" ? Convert.ToString(request["path"]) : null, excludeList);
                 Interlocked.Exchange(ref requestStarted, 0);
             }

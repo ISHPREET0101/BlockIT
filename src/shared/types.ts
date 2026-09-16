@@ -36,9 +36,11 @@ export interface ScanProgress {
   warnings: number;
   elapsedMs: number;
   message?: string;
+  treemapReady?: boolean;
 }
 
 export interface ScanSummary {
+  treemapReady?: boolean;
   scanId: string;
   rootId: number;
   rootPath: string;
@@ -145,7 +147,6 @@ export interface BlockItApi {
     resume(scanId: string): Promise<void>;
     onProgress(callback: (progress: ScanProgress) => void): () => void;
     launchTarget(): Promise<string | null>;
-    rescanElevated(scanId: string): Promise<ActionResult>;
   };
   data: {
     summary(scanId: string): Promise<ScanSummary>;

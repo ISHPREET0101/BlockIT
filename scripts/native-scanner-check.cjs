@@ -80,17 +80,15 @@ async function main() {
     let batch=await request({op:'open',path:root});
     // One batch spans directory boundaries: the walk streams the root's own
     // entries and keeps going through prefetched children until the cap.
-    assert.equal(batch.entries.length,4096);assert.equal(batch.done,false);
+    assert.equal(batch.entries.length+(batch.dirs?.length||0)+(batch.pending?.length||0),4096);assert.equal(batch.done,false);
     assert(batch.self&&batch.self.directory&&!batch.self.reparse,'Open responses carry self metadata');
     assert.equal(batch.self.path.toLowerCase(),root.toLowerCase());
     await new Promise(r=>setTimeout(r,150));assert.equal(queue.length,0,'Reader must wait for demand');
+    let pendingMarkers=(batch.pending||[]).filter(d=>['sub-0','sub-2040','sub-2199'].includes(d.n)).length;
     let count=batch.entries.length;
-    while(!batch.done){batch=await request({op:'next'});assert(batch.entries.length<=4096);assert.equal(batch.self,null);count+=batch.entries.length;}
-    // 4,904 tree entries (including excluded\private.txt — the probe passes no
-    // exclusion list) plus the helper-local markers; NTFS enumerates in
-    // directory-index (lexicographic) order, so exactly one of the three
-    // sprawling markers falls beyond the 2,046-dir helper cap into pending.
-    assert.equal(count,4906);
+    while(!batch.done){batch=await request({op:'next'});assert(batch.entries.length+(batch.dirs?.length||0)+(batch.pending?.length||0)<=4096);assert.equal(batch.self,null);count+=batch.entries.length;pendingMarkers+=(batch.pending||[]).filter(d=>['sub-0','sub-2040','sub-2199'].includes(d.n)).length;}
+    // Include the unexcluded private file, junction and handed-off marker folders.
+    assert.equal(count+pendingMarkers,4907);
     batch=await request({op:'open',path:path.join(root,'batchy')});
     assert.equal(batch.entries.length,4096);assert.equal(batch.done,false);
     await new Promise(r=>setTimeout(r,150));assert.equal(queue.length,0,'Reader must wait for demand');

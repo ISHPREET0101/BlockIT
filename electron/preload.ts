@@ -10,7 +10,6 @@ const api: BlockItApi = {
     pause: (scanId: string) => ipcRenderer.invoke('scan:pause',scanId),
     resume: (scanId: string) => ipcRenderer.invoke('scan:resume',scanId),
     launchTarget: () => ipcRenderer.invoke('scan:launch-target'),
-    rescanElevated: (scanId: string) => ipcRenderer.invoke('scan:rescan-elevated', scanId),
     onProgress(callback: (progress: ScanProgress) => void) {
       const listener = (_event: Electron.IpcRendererEvent, progress: ScanProgress) => callback(progress);
       ipcRenderer.on('scan:progress', listener);

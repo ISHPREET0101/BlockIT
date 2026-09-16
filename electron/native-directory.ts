@@ -28,7 +28,7 @@ export class VolumeAccessDeniedError extends Error {
 }
 export class VolumeUnavailableError extends Error {}
 
-// One outstanding request per reader, at most 1024 entries per response. Pausing
+// One outstanding request per reader, at most 4096 entries/directories per response. Pausing
 // cannot queue a drive's worth of metadata in either process. No shell, scripts
 // or file contents. A scan opens several readers in parallel to overlap
 // directory round trips; each reader still serves exactly one directory at a

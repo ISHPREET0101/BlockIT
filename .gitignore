@@ -2,6 +2,7 @@ node_modules/
 dist/
 dist-electron/
 release/
+docs/
 coverage/
 *.log
 *.db
@@ -14,3 +15,8 @@ coverage/
 build/native/
 .bench/
 .zcode/
+
+.worktrees/
+build/preview-*/
+build/scan-profile-*/
+build/verification/

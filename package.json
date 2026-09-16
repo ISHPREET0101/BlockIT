@@ -1,6 +1,6 @@
 {
   "name": "blockit-storage-explorer",
-  "version": "1.8.0",
+  "version": "1.8.2",
   "description": "A friendly, private Windows storage explorer.",
   "main": "dist-electron/main.js",
   "author": "BlockIT",
@@ -18,7 +18,7 @@
     "test:regression": "cross-env ELECTRON_RUN_AS_NODE=1 electron scripts/regression-check.cjs",
     "test:performance": "cross-env ELECTRON_RUN_AS_NODE=1 electron scripts/performance-check.cjs",
     "test:native": "cross-env ELECTRON_RUN_AS_NODE=1 electron scripts/native-scanner-check.cjs",
-    "test:packaged": "electron scripts/packaged-scanner-check.cjs",
+    "test:packaged": "node scripts/packaged-scanner-check.cjs",
     "test:volume": "node scripts/build-native.cjs && node scripts/volume-fixture-check.cjs",
     "test:drive": "cross-env ELECTRON_RUN_AS_NODE=1 electron scripts/mft-scan-check.cjs",
     "bench:scan": "cross-env ELECTRON_RUN_AS_NODE=1 electron scripts/bench-scan.cjs",
@@ -73,7 +73,10 @@
       "dist/**/*",
       "dist-electron/**/*",
       "node_modules/**/*",
-      "package.json"
+      "package.json",
+      { "from": "node_modules/bindings", "to": "node_modules/bindings", "filter": ["**/*"] },
+      { "from": "node_modules/file-uri-to-path", "to": "node_modules/file-uri-to-path", "filter": ["**/*"] },
+      { "from": "node_modules/scheduler", "to": "node_modules/scheduler", "filter": ["**/*"] }
     ],
     "win": {
       "icon": "build/icon.ico",

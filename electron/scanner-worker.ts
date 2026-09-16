@@ -10,8 +10,9 @@ import { performance } from 'node:perf_hooks';
 import { NativeDirectoryReader, NativeDirectoryTimeoutError, VolumeAccessDeniedError, VolumeUnavailableError, type EntryMetadata } from './native-directory';
 import type { ScanProgress, ScanStatus } from '../src/shared/types';
 
-const data = workerData as { scanId: string; root: string; dbPath: string; volumeTotalBytes: number; volumeFreeBytes: number; clusterSize: number; excludedPaths?: string[]; metadataEngine?: 'portable'; nativeHelperPath?: string; lanes?: number };
+const data = workerData as { scanId: string; root: string; dbPath: string; volumeTotalBytes: number; volumeFreeBytes: number; clusterSize: number; excludedPaths?: string[]; metadataEngine?: 'portable' | 'volume-fixture'; nativeHelperPath?: string; lanes?: number };
 const db = new Database(data.dbPath);
+db.pragma('page_size = 16384');
 db.pragma('journal_mode = WAL');
 db.pragma('synchronous = NORMAL');
 // Fewer, larger checkpoints: committing every few thousand rows no longer
@@ -21,8 +22,6 @@ db.pragma('synchronous = NORMAL');
 db.pragma('wal_autocheckpoint = 0');
 db.pragma('cache_size = -65536');
 db.pragma('temp_store = FILE');
-// Larger pages suit the scan's append-heavy table and bulk index builds.
-db.pragma('page_size = 16384');
 let status: ScanStatus = 'scanning';
 let cancelled = false, paused = false, finalizing = false;
 let files = 0, folders = 1, bytes = 0, allocatedBytes = 0, warnings = 0;
@@ -88,15 +87,17 @@ db.exec(`
 `);
 // Secondary indexes are built once after enumeration instead of maintained on
 // every insert: rows land in an append-only table during the scan, and live
-// queries fall back to bounded scans over the partial result.
+// treemap queries wait for the folder index.
 // idx_files_size is omitted: size-ordered queries (largest files, large-file
 // view) scan idx_nodes_size and filter kind as a residual, which stays cheap
 // because folders are a small share of rows.
+let treemapReady = false;
+const TREEMAP_INDEX = "CREATE INDEX IF NOT EXISTS idx_children_size ON nodes(parent_id,size DESC)";
 const RESULT_INDEXES = `
   CREATE INDEX IF NOT EXISTS idx_nodes_size ON nodes(size DESC);
   CREATE INDEX IF NOT EXISTS idx_nodes_category ON nodes(category,size DESC);
   CREATE INDEX IF NOT EXISTS idx_nodes_extension ON nodes(extension,size DESC);
-  CREATE INDEX IF NOT EXISTS idx_children_size ON nodes(parent_id,size DESC);
+
 `;
 // Live top lists for the dashboard during a scan: the worker maintains them in
 // memory and republishes a tiny table per commit, so the UI never runs
@@ -167,7 +168,8 @@ function progress(force=false) {
   if (!force && now-lastProgress<500) return;
   lastProgress=now;
   const payload:ScanProgress={scanId:data.scanId,status,currentPath,files,folders,bytes,warnings,elapsedMs:now-startedAt,
-    message:paused?'Paused — resume when ready':finalizing?'Finishing folder totals…':undefined};
+    treemapReady,
+    message:paused?'Paused — resume when ready':finalizing?(treemapReady?'Treemap ready — preparing other views…':'Preparing treemap…'):undefined};
   parentPort?.postMessage({type:'progress',progress:payload});
 }
 function commit(force=false) {
@@ -399,6 +401,7 @@ async function nativeEnumerate(lane:Lane,job:LaneJob,acc:FolderAcc,volume=false)
           ? await reader.readVolumeNext()
           : await reader.read(opened?job.path:undefined, excluded);
       prefetched=undefined;
+      if(TIMING) { T.read += performance.now()-openStart; T.readN++; }
       if(opened && !volume) noteLatency(performance.now()-openStart);
     } catch(error) {
       // The reader is dead; later folders on this lane use compatibility
@@ -458,6 +461,7 @@ async function nativeEnumerate(lane:Lane,job:LaneJob,acc:FolderAcc,volume=false)
       awaiting.set(parent.id,(awaiting.get(parent.id)??0)+1);
       parentOf.set(id,parent.id);
       rows++;
+      emitted=true;
       walk.set(dir.i,{id,path:childPath,name:dir.n,acc:{size:0,allocated:0,fileCount:0,folderCount:0,modifiedAt:dir.m,name:dir.n,path:childPath}});
     }
     if(batch.entries.length) {
@@ -614,7 +618,9 @@ async function run() {
     VALUES (?,?,?,'scanning',?,?,?)`).run(data.scanId,data.root,path.basename(data.root)||data.root,startedAt,data.volumeTotalBytes,data.volumeFreeBytes);
   // Helper startup overlaps root validation and schema creation.
   const laneCount=Math.max(1,Math.min(data.lanes??Math.min(8,Math.max(2,(os.availableParallelism?.()??os.cpus().length)>>1)),16));
-  const tryVolume=process.platform==='win32' && data.metadataEngine!=='portable' && /^[a-zA-Z]:\\?$/i.test(data.root) && process.env.BLOCKIT_FORCE_WALK!=='1';
+  // Real user scans use the normal-permission directory walker. Direct-volume
+  // parsing is reserved for generated test images.
+  const tryVolume=data.metadataEngine==='volume-fixture' && !!process.env.BLOCKIT_VOLUME_IMAGE;
   // Direct NTFS enumeration uses one helper; start walk lanes only on fallback.
   const initialLaneCount=tryVolume?1:laneCount;
   for(let i=0;i<initialLaneCount;i++) lanes.push({reader:undefined});
@@ -635,11 +641,7 @@ async function run() {
   pathById.set(rootId,data.root);
   begin();
   enumWallStart = performance.now();
-  // Fast path: on a drive root, one helper loads the whole NTFS volume through
-  // the Master File Table when the process can open the volume handle. Any
-  // first-read failure falls back to the parallel directory walk; the root
-  // folder row already exists and nothing has been emitted, so nothing is
-  // duplicated. BLOCKIT_FORCE_WALK=1 opts out for A/B testing.
+  // Generated volume fixtures exercise the alternate engine; user scans always walk.
   let volumeOk=false;
   if(tryVolume && lanes[0].reader && !cancelled) {
     inFlight++;
@@ -650,7 +652,7 @@ async function run() {
       const rootAcc:FolderAcc={size:0,allocated:0,fileCount:0,folderCount:0,modifiedAt:0,name:path.basename(data.root)||data.root,path:data.root};
       volumeOk = await nativeEnumerate(lanes[0],{id:rootId,path:data.root},rootAcc,true)==='done';
     } catch(error) {
-      if(error instanceof VolumeAccessDeniedError) warn(data.root,'Fast drive scan skipped: administrator rights are required. Rescanning as administrator uses direct drive indexing, which is much faster.');
+      if(error instanceof VolumeAccessDeniedError) throw error;
       else if(error instanceof VolumeUnavailableError) warn(data.root,'Fast drive scan skipped: '+error.message);
       else if(!cancelled) warn(data.root,'Fast drive scan failed; falling back to directory scanning.');
       volumeOk=false;
@@ -686,6 +688,10 @@ async function run() {
   // Random-key index writes (children, category) thrive on a big page cache.
   db.pragma('cache_size = -524288');
   db.pragma('mmap_size = 268435456');
+  db.exec(TREEMAP_INDEX);
+  treemapReady = true;
+  progress(true);
+  await new Promise<void>(resolve => setImmediate(resolve));
   db.exec(RESULT_INDEXES);
   db.pragma('mmap_size = 0');
   db.pragma('synchronous = NORMAL');

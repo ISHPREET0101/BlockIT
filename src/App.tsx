@@ -119,7 +119,7 @@ function App() {
       if (scanIdRef.current !== next.scanId) return;
       setProgress(next);
       const now = Date.now();
-      if (now - lastRefresh.current > 2500 || ['paused','completed', 'completed_with_warnings', 'failed', 'idle'].includes(next.status)) {
+      if (next.treemapReady || now - lastRefresh.current > 2500 || ['paused','completed', 'completed_with_warnings', 'failed', 'idle'].includes(next.status)) {
         lastRefresh.current = now;
         void refreshSummary(next.scanId);
       }
@@ -136,7 +136,6 @@ function App() {
       setSearch('');
       setDebouncedSearch('');
       const started = await window.blockit.scan.start(root);
-      if (!started.scanId) return;   // empty id: an elevated relaunch took over and this window is closing
       navigationSequence.current++;
       setTarget(root);setPage(1);setExtension('');setKind('');
       scanIdRef.current = started.scanId;
@@ -191,12 +190,13 @@ function App() {
     return () => { alive = false; };
   }, [query, refreshVersion]);
 
+  const treemapReady = summary?.treemapReady === true || progress?.treemapReady === true || (summary?.treemapReady == null && !!summary && !['scanning','paused','cancelling'].includes(summary.status));
   useEffect(() => {
-    if (!scanId || parentId == null || view!=='treemap' || !settings.showTreemap || debouncedSearch.trim()) return;
+    if (!treemapReady || !scanId || parentId == null || view!=='treemap' || !settings.showTreemap || debouncedSearch.trim()) return;
     let alive = true;
     void window.blockit.data.treemap(scanId, parentId, mapDepth).then((nodes) => { if (alive) {setTreemapNodes(nodes);setTreeKey(scanId+':'+parentId);} }).catch(error => { if (alive) {setTreemapNodes([]);showResult({ok:false,message:String(error)});} });
     return () => { alive = false; };
-  }, [scanId, parentId, refreshVersion,view,settings.showTreemap,debouncedSearch,mapDepth]);
+  }, [scanId, parentId, refreshVersion,view,settings.showTreemap,debouncedSearch,mapDepth,treemapReady]);
 
   useEffect(() => { setPage(1); setSelected(null); }, [view, search, extension, kind, selectedCategory, parentId, settings.largeFileThreshold, settings.oldFileDays, sortBy, sortDir]);
   useEffect(() => { if (toast) { const timer = setTimeout(() => setToast(null), 3600); return () => clearTimeout(timer); } }, [toast]);
@@ -388,7 +388,7 @@ function App() {
             )}
 
             {view === 'treemap' && settings.showTreemap && !debouncedSearch.trim() && (
-              <TreemapView depth={mapDepth} onDepthChange={setMapDepth} nodes={displayedTreemapNodes} title={breadcrumbs.at(-1)?.name || summary?.label || 'Storage'} settings={settings}
+              <TreemapView loading={!treemapReady || treeKey!==scanId+':'+parentId} depth={mapDepth} onDepthChange={setMapDepth} nodes={displayedTreemapNodes} title={breadcrumbs.at(-1)?.name || summary?.label || 'Storage'} settings={settings}
                 canReset={breadcrumbs.length > 1} onOpen={onMapOpen} onReset={onMapReset} onExport={onMapExport} onCopyPath={async node=>{
                   if(!scanId || node.synthetic) return;
                   try {
@@ -410,7 +410,7 @@ function App() {
 
       {selected && <div className="inspector" aria-label="Selected item details"><div className="drawer-head"><div><span className="eyebrow">Item details</span><h2>{selected.name}</h2></div><button className="icon-button" aria-label="Close details" onClick={() => setSelected(null)}><X size={19} /></button></div><div className="inspector-size">{formatBytes(selected.size, settings.unit)}</div><p className="helper">Logical file size</p><dl><dt>Category</dt><dd>{selected.kind === 'folder' ? 'Folder' : selected.category}</dd><dt>Estimated disk use</dt><dd>{formatBytes(selected.allocatedSize, settings.unit)}</dd><dt>Modified</dt><dd>{new Date(selected.modifiedAt).toLocaleString()}</dd><dt>Contents</dt><dd>{selected.kind === 'folder' ? `${selected.fileCount.toLocaleString()} files, ${selected.folderCount.toLocaleString()} folders` : selected.extension || 'No extension'}</dd><dt>Attributes</dt><dd>{selected.attributes || 'None recorded'}</dd><dt>Location</dt><dd className="inspector-path">{selected.path}</dd></dl><button className="primary-button" onClick={() => { void openNode(selected); setSelected(null); }}><FolderOpen size={16} />Open</button><button className="ghost-button" onClick={() => void runSelectedAction('reveal', selected)}>Show in Explorer</button><button className="ghost-button" onClick={() => void runSelectedAction('copy', selected)}>Copy full path</button><button className="danger-button" disabled={isScanning || selected.parentId == null} onClick={() => void recycleItem(selected)}><Trash2 size={16} />Move to Recycle Bin</button></div>}
 
-      {settingsOpen && <SettingsPanel settings={settings} onChange={(patch) => void updateSettings(patch)} onClose={() => setSettingsOpen(false)} onElevate={scanId ? async () => showResult(await window.blockit.scan.rescanElevated(scanId)) : undefined} />}
+      {settingsOpen && <SettingsPanel settings={settings} onChange={(patch) => void updateSettings(patch)} onClose={() => setSettingsOpen(false)} />}
       {warnings && <WarningsDialog warnings={warnings} onClose={() => setWarnings(null)} />}
       {toast && <div className={`toast ${toast.tone}`}><span>{toast.message}</span><button onClick={() => setToast(null)}><X size={15} /></button></div>}
     </div>
@@ -453,13 +453,13 @@ function Overview({ summary, settings, topCategory, onFolder, onFile }: {
   </>;
 }
 
-function SettingsPanel({ settings, onChange, onClose, onElevate }: { settings: AppSettings; onChange(patch: Partial<AppSettings>): void; onClose(): void; onElevate?: () => void }) {
+function SettingsPanel({ settings, onChange, onClose }: { settings: AppSettings; onChange(patch: Partial<AppSettings>): void; onClose(): void }) {
   const toggle = (key: keyof AppSettings, label: string) => <label className="toggle-row"><span>{label}</span><input type="checkbox" checked={Boolean(settings[key])} onChange={(event) => onChange({ [key]: event.target.checked })} /></label>;
   return <div className="drawer-backdrop" onMouseDown={onClose}><aside className="settings-drawer" onMouseDown={(event) => event.stopPropagation()}>
     <div className="drawer-head"><div><span className="eyebrow">Preferences</span><h2>Settings</h2></div><button className="icon-button" onClick={onClose}><X size={19} /></button></div>
     <section><h3>Appearance</h3><label className="field-row"><span>Theme</span><select value={settings.theme} onChange={(event) => onChange({ theme: event.target.value as AppSettings['theme'] })}><option value="dark">Dark</option><option value="light">Light</option></select></label><label className="field-row"><span>Size units</span><select value={settings.unit} onChange={(event) => onChange({ unit: event.target.value as AppSettings['unit'] })}>{['dynamic', 'bytes', 'KB', 'MB', 'GB', 'TB'].map((unit) => <option key={unit}>{unit}</option>)}</select></label>{toggle('showHeader', 'Show summary cards')}{toggle('showFileTypes', 'Show file-type breakdown')}{toggle('showTreemap', 'Show treemap')}</section>
     <section><h3>Treemap</h3>{toggle('showLabels', 'Show names and sizes')}{toggle('showFreeSpace', 'Show free space')}{toggle('useAllocatedSize', 'Use estimated disk usage')}<p className="helper">Disk usage is estimated from the volume allocation unit. Compressed and sparse files can differ.</p></section>
-    <section><h3>Safety</h3><p className="helper">Recycle Bin actions always require confirmation. BlockIT has no permanent delete or automatic file-moving command.</p>{onElevate && <button className="ghost-button full" onClick={onElevate}><ShieldCheck size={16} /> Rescan as administrator</button>}</section>
+    <section><h3>Safety</h3><p className="helper">Recycle Bin actions always require confirmation. BlockIT has no permanent delete or automatic file-moving command.</p></section>
   </aside></div>;
 }
 

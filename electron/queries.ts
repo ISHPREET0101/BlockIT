@@ -122,6 +122,10 @@ export function queryNodes(input: NodeQuery): QueryResult {
   })();
 }
 
+function hasTreemapIndex(db: Database.Database): boolean {
+  return !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_children_size'").get();
+}
+
 export function getSummary(scanId: string): ScanSummary {
   const db = openDatabase(scanId);
   return db.transaction(() => {
@@ -143,12 +147,13 @@ export function getSummary(scanId: string): ScanSummary {
         topFolders = db.prepare("SELECT * FROM scan_top WHERE kind='folder' ORDER BY size DESC").all() as Array<Record<string, unknown>>;
       } catch { topFiles = undefined; topFolders = undefined; }
     }
-    if (!topFiles || !topFolders || (topFiles.length === 0 && topFolders.length === 0)) {
+    if (!topFiles || !topFolders) {
       topFiles = db.prepare("SELECT * FROM nodes WHERE kind = 'file' ORDER BY size DESC LIMIT 8").all() as Array<Record<string, unknown>>;
       topFolders = db.prepare("SELECT * FROM nodes WHERE kind = 'folder' AND parent_id = ? ORDER BY size DESC LIMIT 8").all(root.id) as Array<Record<string, unknown>>;
     }
     return {
       scanId,
+      treemapReady: hasTreemapIndex(db),
       rootId: Number(root.id),
       rootPath: String(run.root_path),
       label: String(run.label),
@@ -175,6 +180,9 @@ export function treemapChildren(scanId: string, parentId: number, depth = 1): Tr
   nodeIdentifier(parentId);
   const db = openDatabase(scanId);
   return db.transaction(() => {
+    // LIMIT bounds output, not work. Without the folder index each nested
+    // query scans the entire drive and blocks the other queries in this worker.
+    if (!hasTreemapIndex(db)) return [];
     // Bound IPC payload and SVG work even on scans with millions of entries.
     let remaining = 2500;
     const readChildren = (parentId: number, level: number): TreemapNode[] => {
