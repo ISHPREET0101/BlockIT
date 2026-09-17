@@ -92,6 +92,13 @@ async function main() {
       await delay(100);
     }
     assert(blocks > 0, 'Standalone treemap rendered');
+    assert(await evaluate('document.querySelector(".map-back")?.disabled'), 'Packaged back arrow is disabled at root');
+    await evaluate('document.querySelector(".treemap-cell[data-kind=folder]").dispatchEvent(new MouseEvent("click",{bubbles:true}))');
+    for(let i=0;i<100;i++) { if(await evaluate('document.querySelector(".treemap-panel h2")?.textContent==="nested"')) break; await delay(100); }
+    assert.equal(await evaluate('document.querySelector(".treemap-panel h2").textContent'),'nested');
+    await evaluate('document.querySelector(".map-back").click()');
+    for(let i=0;i<100;i++) { if(await evaluate('document.querySelector(".map-back")?.disabled')) break; await delay(100); }
+    assert(await evaluate('document.querySelector(".map-back").disabled'), 'Packaged back arrow returns to root');
     // Verify byte totals through the shipped query worker as well as the UI.
     await evaluate('window.__packagedProgress=null; window.blockit.scan.onProgress(p=>{window.__packagedProgress=p}); undefined');
     const { scanId } = await evaluate('window.blockit.scan.start(' + JSON.stringify(fixture) + ')');

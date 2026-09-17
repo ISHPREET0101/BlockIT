@@ -106,6 +106,10 @@ async function run() {
   await js("const first=document.querySelector('.treemap-cell');first.focus();first.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));");
   await delay(400);
   assert(await js("return document.querySelector('.treemap-panel h2').textContent.includes('Games')"),'Enter drills into folder');
+  await js('document.querySelector(".treemap-cell[data-kind=folder]").dispatchEvent(new MouseEvent("click",{bubbles:true}))');await delay(300);
+  assert.equal(await js('return document.querySelector(".treemap-panel h2").textContent'),'Nested');
+  await js('document.querySelector(".map-back").click()');await delay(300);
+  assert.equal(await js('return document.querySelector(".treemap-panel h2").textContent'),'Games','Normal back returns one folder, not root');
   await js("Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('Back to root')).click()");
   await delay(400);
   assert.equal(await js("return document.querySelectorAll('.treemap-cell[data-kind=folder]').length"),6,'Reset returns to root');
@@ -131,6 +135,13 @@ async function run() {
   await js('document.querySelector(".treemap-cell[data-kind=folder]").dispatchEvent(new MouseEvent("click",{bubbles:true}))');
   await delay(300);
   assert(await js('return document.querySelector(".app-shell").classList.contains("map-fullscreen")'),'Drill-down retains fullscreen');
+  await js('document.querySelector(".treemap-cell[data-kind=folder]").dispatchEvent(new MouseEvent("click",{bubbles:true}))');await delay(300);
+  await js('document.querySelector(".map-back").click()');await delay(300);
+  assert.equal(await js('return document.querySelector(".treemap-panel h2").textContent'),'Games','Fullscreen back returns one folder');
+  assert(await js('return !!document.fullscreenElement'),'Back preserves fullscreen');
+  await js('document.querySelector(".map-back").click()');await delay(300);
+  assert(await js('return document.querySelector(".map-back").disabled'),'Back is disabled at root');
+  await js('document.querySelector(".treemap-cell[data-kind=folder]").dispatchEvent(new MouseEvent("click",{bubbles:true}))');await delay(300);
   await js('Array.from(document.querySelectorAll("button")).find(b=>b.textContent.includes("Back to root")).click()');
   await delay(300);
   await fs.writeFile(path.join(__dirname,'../docs/treemap-fullscreen.png'),(await win.webContents.capturePage()).toPNG());

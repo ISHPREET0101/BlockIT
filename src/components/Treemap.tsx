@@ -1,6 +1,6 @@
 import { memo, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { hierarchy, treemap } from 'd3-hierarchy';
-import { Download, Focus, RotateCcw, Search, ArrowUpRight, Layers, SlidersHorizontal, Copy, Maximize2, Minimize2 } from 'lucide-react';
+import { Download, Focus, RotateCcw, Search, ArrowUpRight, ArrowLeft, Layers, SlidersHorizontal, Copy, Maximize2, Minimize2 } from 'lucide-react';
 import { formatBytes } from '../shared/format';
 import { blockColor, readableText, adjacentColors, flattenNodes, metricColor, sizeColors, ageColors, levelColors, blockPalette, type ColorMode } from '../shared/treemap';
 import { categoryColors } from '../shared/categories';
@@ -19,11 +19,12 @@ interface TreemapProps {
   onOpen(node: TreemapNode): void;
   onCopyPath(node: TreemapNode): Promise<void>;
   onReset(): void;
+  onBack(): void;
   onExport(dataUrl: string): Promise<void>;
 }
 interface LayoutDatum { node?: TreemapNode; children?: LayoutDatum[]; }
 
-export const TreemapView = memo(function TreemapView({ fullscreen, onToggleFullscreen, loading, depth, onDepthChange, nodes, title, settings, canReset, onOpen, onReset, onExport, onCopyPath }: TreemapProps) {
+export const TreemapView = memo(function TreemapView({ fullscreen, onToggleFullscreen, loading, depth, onDepthChange, nodes, title, settings, canReset, onOpen, onReset, onBack, onExport, onCopyPath }: TreemapProps) {
   const svgRef = useRef<SVGSVGElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
@@ -109,6 +110,7 @@ export const TreemapView = memo(function TreemapView({ fullscreen, onToggleFulls
     <div className="panel-heading">
       <div><h2>{title}</h2><p className="map-hint">Bigger blocks use more space. Nested blocks show what is inside each folder.</p></div>
       <div className="toolbar compact">
+        <button className="ghost-button map-back" disabled={!canReset} onClick={onBack} aria-label="Back to previous folder" title="Back to previous folder"><ArrowLeft size={16}/></button>
         <button className="ghost-button map-fullscreen-toggle" aria-pressed={fullscreen} onClick={onToggleFullscreen} title={fullscreen ? 'Exit fullscreen (Esc)' : 'Expand treemap to fullscreen'}>{fullscreen ? <Minimize2 size={16}/> : <Maximize2 size={16}/>} {fullscreen ? 'Exit fullscreen' : 'Fullscreen'}</button>
         {canReset && <button className="ghost-button" onClick={onReset}><RotateCcw size={16}/> Back to root</button>}
         <button className="ghost-button" disabled={exporting || !leaves.length} onClick={()=>void savePng()}><Download size={16}/> {exporting?'Saving…':'Save image'}</button>

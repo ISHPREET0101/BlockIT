@@ -293,6 +293,7 @@ function App() {
   }, [treemapNodes, parentId, treeKey, scanId]);
   const onMapOpen=useCallback((node:TreemapNode)=>node.kind==='folder'?void openNode(node):setSelected(node),[openNode]);
   const onMapReset=useCallback(()=>{if(summary)selectCrumb(summary.rootId);},[summary?.rootId,selectCrumb]);
+  const onMapBack=useCallback(()=>{const previous=breadcrumbs.at(-2);if(previous)selectCrumb(previous.id);},[breadcrumbs,selectCrumb]);
   const onMapExport=useCallback(async(dataUrl:string)=>showResult(await window.blockit.actions.exportTreemap(dataUrl)),[showResult]);
 
   return (
@@ -395,7 +396,7 @@ function App() {
 
             {view === 'treemap' && settings.showTreemap && !debouncedSearch.trim() && (
               <TreemapView fullscreen={mapFullscreen} onToggleFullscreen={toggleMapFullscreen} loading={!treemapReady || treeKey!==scanId+':'+parentId} depth={mapDepth} onDepthChange={setMapDepth} nodes={displayedTreemapNodes} title={breadcrumbs.at(-1)?.name || summary?.label || 'Storage'} settings={settings}
-                canReset={breadcrumbs.length > 1} onOpen={onMapOpen} onReset={onMapReset} onExport={onMapExport} onCopyPath={async node=>{
+                canReset={breadcrumbs.length > 1} onBack={onMapBack} onOpen={onMapOpen} onReset={onMapReset} onExport={onMapExport} onCopyPath={async node=>{
                   if(!scanId || node.synthetic) return;
                   try {
                     const result=await window.blockit.actions.copyPath(scanId,node.id);
