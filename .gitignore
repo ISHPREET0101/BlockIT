@@ -12,11 +12,8 @@ coverage/
 .idea/
 .vscode/
 .benchmark-*/
-build/native/
+build/
 .bench/
 .zcode/
 
 .worktrees/
-build/preview-*/
-build/scan-profile-*/
-build/verification/
