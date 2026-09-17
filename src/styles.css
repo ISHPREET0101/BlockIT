@@ -363,3 +363,37 @@ td { height: 52px; font-size: 12px; }
 .map-path-row { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; }
 .map-path-row .map-path { flex: 1; user-select: text; }
 .map-copy-path { flex-shrink: 0; }
+
+/* Expanded map keeps the scan controls and Explore navigation within reach. */
+.app-shell.map-fullscreen { grid-template-columns: 56px minmax(0, 1fr); height: 100dvh; }
+.map-fullscreen .sidebar { gap: 12px; padding: 8px 6px; }
+.map-fullscreen .brand { padding: 0; justify-content: center; }
+.map-fullscreen .brand img { width: 30px; height: 30px; }
+.map-fullscreen .brand div, .map-fullscreen .nav-label, .map-fullscreen .nav-item span,
+.map-fullscreen .privacy-card { display: none; }
+.map-fullscreen .nav-item { justify-content: center; padding: 0; min-height: 38px; }
+.map-fullscreen .settings-link { margin-top: auto; }
+.map-fullscreen .topbar { height: 40px; flex-basis: 40px; padding: 0 10px; gap: 8px; }
+.map-fullscreen .topbar button { min-height: 28px; height: 28px; font-size: 11px; }
+.map-fullscreen .target-picker { min-width: 160px; height: 28px; max-width: 250px; }
+.map-fullscreen .scan-strip { padding: 3px 10px; }
+.map-fullscreen .scan-copy span { display: none; }
+.map-fullscreen .workspace { flex: 1; min-height: 0; padding: 4px; display: flex; flex-direction: column; overflow: hidden; }
+.map-fullscreen .page-title-row, .map-fullscreen .filter-bar, .map-fullscreen .breadcrumbs,
+.map-fullscreen .completion-note { display: none; }
+.map-fullscreen .treemap-panel { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; border-radius: 6px; }
+.map-fullscreen .panel-heading { min-height: 48px; flex-shrink: 0; padding: 4px 8px; gap: 8px; }
+.map-fullscreen .panel-heading > div:first-child { min-width: 0; }
+.map-fullscreen .panel-heading h2 { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.map-fullscreen .panel-heading .ghost-button { min-height: 28px; padding: 0 8px; font-size: 11px; }
+.map-fullscreen .map-hint { margin: 3px 0 0; font-size: 11px; }
+.map-fullscreen .treemap-wrap { flex: 1; min-height: 0; overflow: auto; scrollbar-gutter: stable; }
+.map-fullscreen .treemap-wrap svg { width: 100%; height: 100%; max-height: none; }
+.map-fullscreen .map-controls, .map-fullscreen .map-legend { display: flex; padding: 6px 10px; gap: 8px; flex-shrink: 0; }
+.map-fullscreen .map-block-list { display: block; flex-shrink: 0; max-height: 30vh; overflow: auto; }
+.map-fullscreen .map-block-list summary { padding: 6px 10px; }
+.map-fullscreen .map-details { position: absolute; bottom: 44px; left: 16px; z-index: 2; max-width: min(720px, 90%); max-height: 180px; overflow: auto; padding: 8px 12px; gap: 6px; min-height: 0; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); box-shadow: var(--shadow); }
+.map-fullscreen .map-details[data-active='false'] { display: none; }
+.map-fullscreen .map-path, .map-fullscreen .map-details strong { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.map-fullscreen .map-segments button { padding: 5px 8px; }
+.map-fullscreen .map-search { padding: 6px 8px; }

@@ -24,11 +24,18 @@ async function run() {
     if(win&&!win.webContents.isLoading()&&await win.webContents.executeJavaScript('!!document.querySelector(".welcome")').catch(()=>false)) break;
     await delay(100);
   }
-  const js=code=>win.webContents.executeJavaScript('(()=>{'+code+'})()');
+  const js=code=>win.webContents.executeJavaScript('(()=>{'+code+'})()',true).catch(error=>{throw new Error(code+'\n'+error.message)});
   dialog.showOpenDialog=async()=>({canceled:false,filePaths:[fixture]});
   await js("Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('Choose folder')).click()");
   for(let i=0;i<100;i++){if(await js('return !!document.querySelector(".completion-note")'))break;await delay(100);}
-  // Use a marked sample drive to exercise the free-space styling without scanning a real drive.
+  if(process.env.BLOCKIT_FULLSCREEN_PREVIEW==='1') {
+    await js('document.querySelector(".nav-item[aria-label=Treemap]").click()');await delay(600);
+    await js('document.querySelector(".map-fullscreen-toggle").click()');
+    win.show();win.focus();
+    console.log('Fullscreen preview open with generated sample files.');
+    return;
+  }
+  // Use a marked sample drive to verify free space stays out of the map without scanning a real drive.
   const scanFiles=await fs.readdir(path.join(base,'profile','scans'));
   const scanId=scanFiles.find(file=>file.endsWith('.db')).slice(0,-3);
   const summary=await win.webContents.executeJavaScript('window.blockit.data.summary('+JSON.stringify(scanId)+')');
@@ -40,7 +47,7 @@ async function run() {
   await delay(600);
   assert.equal(await js("return document.querySelectorAll('.treemap-cell[data-kind=folder]').length"),6);
   assert.equal(await js("return new Set(Array.from(document.querySelectorAll('.treemap-cell[data-kind=folder] .block-outline')).map(r=>r.getAttribute('fill'))).size"),6,'Every folder is visibly distinct');
-  assert(await js("return document.querySelector('[data-kind=free] .block-outline').getAttribute('fill').startsWith('url(')"),'Free space is patterned');
+  assert.equal(await js("return document.querySelectorAll('[data-kind=free]').length"),0,'Free space is excluded even for drive roots');
   const deep=await win.webContents.executeJavaScript('window.blockit.data.treemap('+JSON.stringify(scanId)+','+summary.rootId+',3)');
   assert(deep.find(n=>n.name==='Games').children.find(n=>n.name==='Nested').children.some(n=>n.name==='deep.txt'),'Depth 3 loads grandchildren');
   await assert.rejects(win.webContents.executeJavaScript('window.blockit.data.treemap('+JSON.stringify(scanId)+','+summary.rootId+',4)'));
@@ -76,10 +83,6 @@ async function run() {
   for(let i=0;i<40&&!copiedPath;i++)await delay(50);
   assert.equal(copiedPath,gamesPath,'Copy sends the full path through the validated native clipboard action');
   assert.equal(await js('return document.querySelectorAll(".treemap-cell[data-kind=folder]").length'),6,'Copy does not navigate');
-  await js('document.querySelector(".treemap-cell[data-kind=free]").focus()');
-  await delay(50);
-  assert.equal(await js('return document.querySelector(".map-copy-path")'),null,'Synthetic free space has no copy action');
-
   await js('document.querySelectorAll(".treemap-cell")[1].dispatchEvent(new MouseEvent("mouseover",{bubbles:true}))');
   await delay(100);
   assert.equal(await js('return document.querySelector(".map-path").textContent'),path.join(fixture,'Study videos'),'Hover updates the full path');
@@ -106,7 +109,42 @@ async function run() {
   await js("Array.from(document.querySelectorAll('button')).find(b=>b.textContent.includes('Back to root')).click()");
   await delay(400);
   assert.equal(await js("return document.querySelectorAll('.treemap-cell[data-kind=folder]').length"),6,'Reset returns to root');
-  console.log('PASS: five colour modes, three nested levels, invalid depth rejection, size filtering, zero-byte list, six distinct folder colours, patterned free space, focus details, search highlighting, PNG export, light/dark rendering, keyboard drill-down and reset.');
+  console.log('PASS: five colour modes, three nested levels, invalid depth rejection, size filtering, zero-byte list, six distinct folder colours, free-space exclusion, focus details, search highlighting, PNG export, light/dark rendering, keyboard drill-down and reset.');
+  await js('document.querySelector(".map-fullscreen-toggle").click()');
+  await delay(700);
+  assert(await js('return !!document.fullscreenElement'), 'Native fullscreen entered');
+  const layout=await js('const panel=document.querySelector(".treemap-panel").getBoundingClientRect();const rail=document.querySelector(".sidebar").getBoundingClientRect();const svg=document.querySelector(".treemap-wrap svg");const box=svg.getBoundingClientRect();return {coverage:panel.width*panel.height/(innerWidth*innerHeight),rail:rail.width,ratio:box.width/box.height,viewRatio:svg.viewBox.baseVal.width/svg.viewBox.baseVal.height,scroll:document.querySelector(".workspace").scrollHeight-document.querySelector(".workspace").clientHeight}');
+  assert(layout.coverage>.88,'Map panel occupies approximately 90% of the screen: '+JSON.stringify(layout));
+  assert.equal(layout.rail,56,'Explore collapses to an icon rail');
+  assert(Math.abs(layout.ratio-layout.viewRatio)<.02,'Map layout fills its container without stretching');
+  assert(layout.scroll<=1,'Fullscreen workspace has no vertical overflow');
+  assert(await js('return [".map-controls",".map-legend",".map-hint"].every(selector=>document.querySelector(selector).getBoundingClientRect().height>0)'),'Header controls and legend stay visible');
+  const fitWidth=await js('return document.querySelector(".treemap-wrap svg").viewBox.baseVal.width');
+  await js('document.querySelector(`[aria-label="Zoom in"]`).click()');await delay(250);
+  assert(await js('const wrap=document.querySelector(".treemap-wrap");return wrap.scrollWidth>wrap.clientWidth'),'Zoom exposes a scrollable enlarged map');
+  assert((await js('return document.querySelector(".treemap-wrap svg").viewBox.baseVal.width'))>fitWidth*1.4,'Zoom increases block geometry');
+  await js('document.querySelector(`[aria-label="Fit map"]`).click()');await delay(250);
+  assert.equal(await js('return document.querySelector(".treemap-wrap svg").viewBox.baseVal.width'),fitWidth,'Fit restores all blocks');
+  await js('document.querySelector(".map-block-list summary").click();document.querySelector(`[aria-label="Inspect empty.txt"]`).focus()');await delay(150);
+  assert((await js('return document.querySelector(".map-path").textContent')).endsWith('empty.txt'),'Even zero-size items expose full details in fullscreen');
+  await js('document.querySelector(".map-block-list summary").click()');await delay(150);
+  await js('document.querySelector(".treemap-cell[data-kind=folder]").dispatchEvent(new MouseEvent("click",{bubbles:true}))');
+  await delay(300);
+  assert(await js('return document.querySelector(".app-shell").classList.contains("map-fullscreen")'),'Drill-down retains fullscreen');
+  await js('Array.from(document.querySelectorAll("button")).find(b=>b.textContent.includes("Back to root")).click()');
+  await delay(300);
+  await fs.writeFile(path.join(__dirname,'../docs/treemap-fullscreen.png'),(await win.webContents.capturePage()).toPNG());
+  win.webContents.sendInputEvent({type:'keyDown',keyCode:'Escape'});
+  win.webContents.sendInputEvent({type:'keyUp',keyCode:'Escape'});
+  await delay(600);
+  assert(await js('return !document.fullscreenElement&&!document.querySelector(".app-shell").classList.contains("map-fullscreen")'),'Escape restores normal layout');
+  await js('document.querySelector(".map-fullscreen-toggle").click()');await delay(500);
+  await js('document.querySelector(".map-fullscreen-toggle").click()');await delay(500);
+  assert(await js('return !document.fullscreenElement'),'Exit button restores window mode');
+  await js('document.querySelector(".map-fullscreen-toggle").click()');await delay(500);
+  await js('document.querySelector(".nav-item[aria-label=Overview]").click()');await delay(500);
+  assert(await js('return !document.fullscreenElement&&!document.querySelector(".app-shell").classList.contains("map-fullscreen")'),'Leaving Treemap restores full navigation');
+  console.log('PASS: fullscreen coverage, compact navigation, proportional layout, visible controls, zoom, small-item details, drill-down, Escape, exit button and navigation exit.');
   app.quit();
 }
 run().catch(error=>{console.error(error);app.exit(1);});

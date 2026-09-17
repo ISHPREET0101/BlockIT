@@ -50,6 +50,27 @@ function App() {
   const [parentId, setParentId] = useState<number | null>(null);
   const [breadcrumbs, setBreadcrumbs] = useState<Array<{ id: number; name: string }>>([]);
   const [mapDepth, setMapDepth] = useState(1);
+  const [mapFullscreen, setMapFullscreen] = useState(false);
+  const exitMapFullscreen = useCallback(() => {
+    setMapFullscreen(false);
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+  }, []);
+  const toggleMapFullscreen = useCallback(() => {
+    if (mapFullscreen) { exitMapFullscreen(); return; }
+    setMapFullscreen(true);
+    // Keep the expanded layout usable if the window manager denies fullscreen.
+    void document.documentElement.requestFullscreen().catch(() => {});
+  }, [mapFullscreen, exitMapFullscreen]);
+  useEffect(() => {
+    const onFullscreenChange = () => { if (!document.fullscreenElement) setMapFullscreen(false); };
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') exitMapFullscreen(); };
+    document.addEventListener('fullscreenchange', onFullscreenChange);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('fullscreenchange', onFullscreenChange);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [exitMapFullscreen]);
   const [treemapNodes, setTreemapNodes] = useState<TreemapNode[]>([]);
   const [result, setResult] = useState<QueryResult | null>(null);
   const [resultKey, setResultKey] = useState('');
@@ -62,6 +83,9 @@ function App() {
   const [selectedCategory, setSelectedCategory] = useState<FileCategory>('Documents');
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    if (view !== 'treemap' || !scanId || !settings.showTreemap || debouncedSearch.trim()) exitMapFullscreen();
+  }, [view, scanId, settings.showTreemap, debouncedSearch, exitMapFullscreen]);
   const [extension, setExtension] = useState('');
   const [kind, setKind] = useState<'' | 'file' | 'folder'>('');
   const [sortBy, setSortBy] = useState<NonNullable<NodeQuery['sortBy']>>('size');
@@ -265,44 +289,26 @@ function App() {
   const currentTitle = navItems.find((item) => item.id === view)?.label || 'Overview';
   const displayedTreemapNodes = useMemo<TreemapNode[]>(() => {
     if(treeKey!==scanId+':'+parentId) return [];
-    if (!settings.showFreeSpace || !summary || parentId !== summary.rootId || summary.volumeFreeBytes <= 0 || !/^[a-z]:\\$/i.test(summary.rootPath)) return treemapNodes;
-    return [...treemapNodes, {
-      id: -9_007_199_254_740_000,
-      parentId: summary.rootId,
-      name: 'Free space',
-      path: '',
-      kind: 'file',
-      extension: '',
-      category: 'Other',
-      size: summary.volumeFreeBytes,
-      allocatedSize: summary.volumeFreeBytes,
-      modifiedAt: 0,
-      attributes: '',
-      itemCount: 0,
-      fileCount: 0,
-      folderCount: 0,
-      synthetic: true,
-      syntheticKind: 'free',
-    }];
-  }, [treemapNodes, settings.showFreeSpace, summary, parentId,treeKey,scanId]);
+    return treemapNodes;
+  }, [treemapNodes, parentId, treeKey, scanId]);
   const onMapOpen=useCallback((node:TreemapNode)=>node.kind==='folder'?void openNode(node):setSelected(node),[openNode]);
   const onMapReset=useCallback(()=>{if(summary)selectCrumb(summary.rootId);},[summary?.rootId,selectCrumb]);
   const onMapExport=useCallback(async(dataUrl:string)=>showResult(await window.blockit.actions.exportTreemap(dataUrl)),[showResult]);
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${mapFullscreen ? ' map-fullscreen' : ''}`}>
       <aside className="sidebar">
         <div className="brand"><img src="./blockit-mark.svg" alt="" /><div><strong>BlockIT</strong><span>Storage explorer</span></div></div>
         <nav>
           <span className="nav-label">Explore</span>
           {navItems.map(({ id, label, icon: Icon }) => (
-            <button key={id} className={view === id ? 'nav-item active' : 'nav-item'} onClick={() => setView(id)} disabled={!scanId}>
+            <button key={id} title={label} aria-label={label} className={view === id ? 'nav-item active' : 'nav-item'} onClick={() => setView(id)} disabled={!scanId}>
               <Icon size={18} /><span>{label}</span>
             </button>
           ))}
         </nav>
         <div className="privacy-card"><ShieldCheck size={19} /><div><strong>Private by design</strong><span>Everything stays on this PC.</span></div></div>
-        <button className="nav-item settings-link" onClick={() => setSettingsOpen(true)}><Settings size={18} /> Settings</button>
+        <button className="nav-item settings-link" title="Settings" aria-label="Settings" onClick={() => setSettingsOpen(true)}><Settings size={18} /><span>Settings</span></button>
       </aside>
 
       <main className="main-area">
@@ -388,7 +394,7 @@ function App() {
             )}
 
             {view === 'treemap' && settings.showTreemap && !debouncedSearch.trim() && (
-              <TreemapView loading={!treemapReady || treeKey!==scanId+':'+parentId} depth={mapDepth} onDepthChange={setMapDepth} nodes={displayedTreemapNodes} title={breadcrumbs.at(-1)?.name || summary?.label || 'Storage'} settings={settings}
+              <TreemapView fullscreen={mapFullscreen} onToggleFullscreen={toggleMapFullscreen} loading={!treemapReady || treeKey!==scanId+':'+parentId} depth={mapDepth} onDepthChange={setMapDepth} nodes={displayedTreemapNodes} title={breadcrumbs.at(-1)?.name || summary?.label || 'Storage'} settings={settings}
                 canReset={breadcrumbs.length > 1} onOpen={onMapOpen} onReset={onMapReset} onExport={onMapExport} onCopyPath={async node=>{
                   if(!scanId || node.synthetic) return;
                   try {
@@ -458,7 +464,7 @@ function SettingsPanel({ settings, onChange, onClose }: { settings: AppSettings;
   return <div className="drawer-backdrop" onMouseDown={onClose}><aside className="settings-drawer" onMouseDown={(event) => event.stopPropagation()}>
     <div className="drawer-head"><div><span className="eyebrow">Preferences</span><h2>Settings</h2></div><button className="icon-button" onClick={onClose}><X size={19} /></button></div>
     <section><h3>Appearance</h3><label className="field-row"><span>Theme</span><select value={settings.theme} onChange={(event) => onChange({ theme: event.target.value as AppSettings['theme'] })}><option value="dark">Dark</option><option value="light">Light</option></select></label><label className="field-row"><span>Size units</span><select value={settings.unit} onChange={(event) => onChange({ unit: event.target.value as AppSettings['unit'] })}>{['dynamic', 'bytes', 'KB', 'MB', 'GB', 'TB'].map((unit) => <option key={unit}>{unit}</option>)}</select></label>{toggle('showHeader', 'Show summary cards')}{toggle('showFileTypes', 'Show file-type breakdown')}{toggle('showTreemap', 'Show treemap')}</section>
-    <section><h3>Treemap</h3>{toggle('showLabels', 'Show names and sizes')}{toggle('showFreeSpace', 'Show free space')}{toggle('useAllocatedSize', 'Use estimated disk usage')}<p className="helper">Disk usage is estimated from the volume allocation unit. Compressed and sparse files can differ.</p></section>
+    <section><h3>Treemap</h3>{toggle('showLabels', 'Show names and sizes')}{toggle('useAllocatedSize', 'Use estimated disk usage')}<p className="helper">Disk usage is estimated from the volume allocation unit. Compressed and sparse files can differ.</p></section>
     <section><h3>Safety</h3><p className="helper">Recycle Bin actions always require confirmation. BlockIT has no permanent delete or automatic file-moving command.</p></section>
   </aside></div>;
 }
