@@ -14,6 +14,7 @@ Windows may show a SmartScreen prompt because the app is not code-signed. Confir
 - Early treemap availability while secondary search and category indexes finish.
 - Overview, nested treemap, categories, large-file and old-file views.
 - Fullscreen treemap with visible controls, a minimized Explore rail and up to 4x zoom.
+- Back arrow returns one folder at a time in normal and fullscreen treemap modes.
 - Search, full-path details, Copy path, colour modes and PNG treemap export.
 - Occupied-space-only treemap; unused drive space is excluded.
 - Pause, resume and stop controls during long scans.
