@@ -2,12 +2,20 @@
 
 BlockIT is a private, local-first Windows storage explorer. It scans a drive or folder in the background and turns storage use into an interactive treemap without uploading file metadata or reading file contents.
 
+## Download and run
+
+Download [BlockIT Portable 1.8.2](https://github.com/ISHPREET0101/BlockIT/releases/latest/download/BlockIT-Portable-1.8.2-x64.exe) from the latest GitHub Release, then double-click the EXE. It requires 64-bit Windows 10 or Windows 11 and does not require installation or administrator access.
+
+Windows may show a SmartScreen prompt because the app is not code-signed. Confirm that the download came from this repository before choosing **More info -> Run anyway**.
+
 ## Features
 
 - Fast native Windows metadata scanning with bounded parallel readers and normal user permissions.
 - Early treemap availability while secondary search and category indexes finish.
 - Overview, nested treemap, categories, large-file and old-file views.
+- Fullscreen treemap with visible controls, a minimized Explore rail and up to 4x zoom.
 - Search, full-path details, Copy path, colour modes and PNG treemap export.
+- Occupied-space-only treemap; unused drive space is excluded.
 - Pause, resume and stop controls during long scans.
 - Confirmed Recycle Bin actions with path validation and junction protection.
 - Compatibility scanner fallback if the native helper cannot start.
@@ -40,7 +48,7 @@ npm ci
 npm run package:win
 ```
 
-The installer and portable executable are generated locally under `release/`. Build outputs and executable releases are intentionally excluded from this source repository.
+The installer and portable executable are generated locally under `release/`. Build outputs remain excluded from the source tree; tested portable builds are published as GitHub Release assets.
 
 ## Verification
 
