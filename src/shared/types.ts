@@ -137,7 +137,28 @@ export interface ActionResult {
   failed?: Array<{ id: number; message: string }>;
 }
 
+export interface ExplorerEntry {
+  name: string;
+  path: string;
+  kind: 'file' | 'folder';
+}
+export interface ExplorerResult {
+  folder: string;
+  parent: string;
+  items: ExplorerEntry[];
+  total: number;
+  indexing: boolean;
+  indexed: number;
+  skipped: number;
+  limited: boolean;
+}
 export interface BlockItApi {
+  explorer: {
+    read(folder: string, search: string, page: number, refresh: boolean): Promise<ExplorerResult>;
+    choose(): Promise<string | null>;
+    action(path: string, action: 'open' | 'reveal' | 'copy'): Promise<void>;
+    stop(): Promise<void>;
+  };
   drives: { list(): Promise<DriveTarget[]> };
   dialog: { selectFolder(): Promise<string | null> };
   scan: {

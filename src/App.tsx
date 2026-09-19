@@ -6,6 +6,7 @@ import {
   ShieldCheck, Square, Sun, Trash2, X, Pause,
 } from 'lucide-react';
 import { DataTable } from './components/DataTable';
+import { FileExplorer } from './components/FileExplorer';
 import { TreemapView } from './components/Treemap';
 import { categoryColors } from './shared/categories';
 import { formatBytes } from './shared/format';
@@ -15,7 +16,7 @@ import type {
   QueryResult, ScanProgress, ScanSummary, TreemapNode,
 } from './shared/types';
 
-type View = 'overview' | 'treemap' | 'browse' | 'categories' | 'large' | 'old';
+type View = 'overview' | 'treemap' | 'browse' | 'categories' | 'large' | 'old' | 'explorer';
 
 const categories: Array<{ name: FileCategory; icon: typeof FileText }> = [
   { name: 'Documents', icon: FileText }, { name: 'Images', icon: FileImage },
@@ -29,6 +30,7 @@ const navItems: Array<{ id: View; label: string; icon: typeof LayoutDashboard }>
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'treemap', label: 'Treemap', icon: BarChart3 },
   { id: 'browse', label: 'Browse', icon: FolderOpen },
+  { id: 'explorer', label: 'File Explorer', icon: FolderOpen },
   { id: 'categories', label: 'Categories', icon: Archive },
   { id: 'large', label: 'Large files', icon: HardDrive },
   { id: 'old', label: 'Old files', icon: Clock3 },
@@ -303,7 +305,7 @@ function App() {
         <nav>
           <span className="nav-label">Explore</span>
           {navItems.map(({ id, label, icon: Icon }) => (
-            <button key={id} title={label} aria-label={label} className={view === id ? 'nav-item active' : 'nav-item'} onClick={() => setView(id)} disabled={!scanId}>
+            <button key={id} title={label} aria-label={label} className={view === id ? 'nav-item active' : 'nav-item'} onClick={() => setView(id)} disabled={!scanId && id !== 'explorer'}>
               <Icon size={18} /><span>{label}</span>
             </button>
           ))}
@@ -339,7 +341,7 @@ function App() {
           </div>
         )}
 
-        {!scanId ? (
+        {view === 'explorer' ? <FileExplorer drives={drives} /> : !scanId ? (
           <Welcome drives={drives} settings={settings} onScan={(root) => { setTarget(root); void beginScan(root); }} onFolder={() => void selectFolder()} />
         ) : (
           <div className="workspace">
@@ -415,7 +417,7 @@ function App() {
         )}
       </main>
 
-      {selected && <div className="inspector" aria-label="Selected item details"><div className="drawer-head"><div><span className="eyebrow">Item details</span><h2>{selected.name}</h2></div><button className="icon-button" aria-label="Close details" onClick={() => setSelected(null)}><X size={19} /></button></div><div className="inspector-size">{formatBytes(selected.size, settings.unit)}</div><p className="helper">Logical file size</p><dl><dt>Category</dt><dd>{selected.kind === 'folder' ? 'Folder' : selected.category}</dd><dt>Estimated disk use</dt><dd>{formatBytes(selected.allocatedSize, settings.unit)}</dd><dt>Modified</dt><dd>{new Date(selected.modifiedAt).toLocaleString()}</dd><dt>Contents</dt><dd>{selected.kind === 'folder' ? `${selected.fileCount.toLocaleString()} files, ${selected.folderCount.toLocaleString()} folders` : selected.extension || 'No extension'}</dd><dt>Attributes</dt><dd>{selected.attributes || 'None recorded'}</dd><dt>Location</dt><dd className="inspector-path">{selected.path}</dd></dl><button className="primary-button" onClick={() => { void openNode(selected); setSelected(null); }}><FolderOpen size={16} />Open</button><button className="ghost-button" onClick={() => void runSelectedAction('reveal', selected)}>Show in Explorer</button><button className="ghost-button" onClick={() => void runSelectedAction('copy', selected)}>Copy full path</button><button className="danger-button" disabled={isScanning || selected.parentId == null} onClick={() => void recycleItem(selected)}><Trash2 size={16} />Move to Recycle Bin</button></div>}
+      {selected && view !== 'explorer' && <div className="inspector" aria-label="Selected item details"><div className="drawer-head"><div><span className="eyebrow">Item details</span><h2>{selected.name}</h2></div><button className="icon-button" aria-label="Close details" onClick={() => setSelected(null)}><X size={19} /></button></div><div className="inspector-size">{formatBytes(selected.size, settings.unit)}</div><p className="helper">Logical file size</p><dl><dt>Category</dt><dd>{selected.kind === 'folder' ? 'Folder' : selected.category}</dd><dt>Estimated disk use</dt><dd>{formatBytes(selected.allocatedSize, settings.unit)}</dd><dt>Modified</dt><dd>{new Date(selected.modifiedAt).toLocaleString()}</dd><dt>Contents</dt><dd>{selected.kind === 'folder' ? `${selected.fileCount.toLocaleString()} files, ${selected.folderCount.toLocaleString()} folders` : selected.extension || 'No extension'}</dd><dt>Attributes</dt><dd>{selected.attributes || 'None recorded'}</dd><dt>Location</dt><dd className="inspector-path">{selected.path}</dd></dl><button className="primary-button" onClick={() => { void openNode(selected); setSelected(null); }}><FolderOpen size={16} />Open</button><button className="ghost-button" onClick={() => void runSelectedAction('reveal', selected)}>Show in Explorer</button><button className="ghost-button" onClick={() => void runSelectedAction('copy', selected)}>Copy full path</button><button className="danger-button" disabled={isScanning || selected.parentId == null} onClick={() => void recycleItem(selected)}><Trash2 size={16} />Move to Recycle Bin</button></div>}
 
       {settingsOpen && <SettingsPanel settings={settings} onChange={(patch) => void updateSettings(patch)} onClose={() => setSettingsOpen(false)} />}
       {warnings && <WarningsDialog warnings={warnings} onClose={() => setWarnings(null)} />}

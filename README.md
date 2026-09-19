@@ -1,10 +1,10 @@
-# BlockIT 1.8.2
+# BlockIT 1.9.1
 
-BlockIT is a private, local-first Windows storage explorer. It scans a drive or folder in the background and turns storage use into an interactive treemap without uploading file metadata or reading file contents.
+BlockIT is a private, local-first Windows storage explorer. Browse files directly, search a selected drive or folder with a reusable local filename index, or scan storage in the background and turn usage into an interactive treemap without uploading file metadata or reading file contents.
 
 ## Download and run
 
-Download [BlockIT Portable 1.8.2](https://github.com/ISHPREET0101/BlockIT/releases/latest/download/BlockIT-Portable-1.8.2-x64.exe) from the latest GitHub Release, then double-click the EXE. It requires 64-bit Windows 10 or Windows 11 and does not require installation or administrator access.
+Download [BlockIT Portable 1.9.1](https://github.com/ISHPREET0101/BlockIT/releases/latest/download/BlockIT-Portable-1.9.1-x64.exe) from the latest GitHub Release, then double-click the EXE. It requires 64-bit Windows 10 or Windows 11 and does not require installation or administrator access.
 
 Windows may show a SmartScreen prompt because the app is not code-signed. Confirm that the download came from this repository before choosing **More info -> Run anyway**.
 
@@ -13,6 +13,7 @@ Windows may show a SmartScreen prompt because the app is not code-signed. Confir
 - Fast native Windows metadata scanning with bounded parallel readers and normal user permissions.
 - Early treemap availability while secondary search and category indexes finish.
 - Overview, nested treemap, categories, large-file and old-file views.
+- File Explorer browsing without a scan, with drive- or folder-scoped recursive filename search.
 - Fullscreen treemap with visible controls, a minimized Explore rail and up to 4x zoom.
 - Back arrow returns one folder at a time in normal and fullscreen treemap modes.
 - Search, full-path details, Copy path, colour modes and PNG treemap export.

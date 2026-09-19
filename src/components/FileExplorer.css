@@ -1,0 +1,22 @@
+.file-explorer { display: flex; flex-direction: column; gap: 14px; }
+.file-explorer .page-title-row { margin-bottom: 2px; }
+.explorer-location { display: flex; gap: 5px; align-items: center; }
+.explorer-location form { flex: 1; display: flex; align-items: center; gap: 10px; border: 1px solid var(--border); border-radius: 9px; padding: 0 12px; background: var(--surface); min-width: 0; }
+.explorer-location input, .explorer-search input { flex: 1; min-width: 0; background: transparent; border: 0; color: var(--text); height: 42px; font-size: 13px; }
+.explorer-drive-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.explorer-search { display: flex; gap: 10px; align-items: center; padding: 0 15px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; color: var(--muted); }
+.explorer-search > span { font-size: 11px; color: var(--green); }
+.explorer-status { font-size: 12px; color: var(--muted); }
+.explorer-hint { color: var(--muted-2); font-size: 11px; margin: 0; }
+.explorer-table { min-height: 180px; max-height: 52vh; overflow: auto; }
+.explorer-table table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12px; }
+.explorer-table th { text-align: left; background: var(--surface-2); color: var(--muted); position: sticky; top: 0; padding: 12px 16px; }
+.explorer-table th:first-child { width: 36%; }.explorer-table th:nth-child(2) { width: 12%; }
+.explorer-table td { padding: 12px 16px; border-top: 1px solid var(--border-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.explorer-table td:first-child svg { vertical-align: middle; margin-right: 10px; color: var(--green); }
+.explorer-table tr:hover, .explorer-table tr.selected { background: var(--surface-3); cursor: pointer; }
+.explorer-footer { display: flex; align-items: center; gap: 8px; }
+.explorer-footer > span { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 11px; color: var(--muted); }
+.explorer-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 14px; font-size: 12px; }
+.explorer-scope { display:flex; gap:8px; align-items:center; font-size:12px; border-right:1px solid var(--border); padding-right:12px; }
+.explorer-scope select { height:42px; max-width:190px; background:transparent; border:0; color:var(--text); font-size:12px; }

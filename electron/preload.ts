@@ -2,6 +2,12 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type { AppSettings, BlockItApi, NodeQuery, ScanProgress } from '../src/shared/types';
 
 const api: BlockItApi = {
+  explorer: {
+    read: (folder, search, page, refresh) => ipcRenderer.invoke('explorer:read', folder, search, page, refresh),
+    choose: () => ipcRenderer.invoke('explorer:choose'),
+    action: (path, action) => ipcRenderer.invoke('explorer:action', path, action),
+    stop: () => ipcRenderer.invoke('explorer:stop'),
+  },
   drives: { list: () => ipcRenderer.invoke('drives:list') },
   dialog: { selectFolder: () => ipcRenderer.invoke('dialog:select-folder') },
   scan: {

@@ -5,6 +5,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { Worker } from 'node:worker_threads';
+import { registerExplorer } from './explorer';
 import { mapNode } from './queries';
 import { defaultSettings, settingsPatch, scanIdentifier, nodeIdentifier, validateQuery } from '../src/shared/validation';
 import { insideRoot, validateLivePath } from './path-safety';
@@ -357,6 +358,7 @@ async function createWindow(): Promise<void> {
 }
 
 function registerIpc(): void {
+  registerExplorer();
   ipcMain.handle('drives:list', () => listDrives());
   ipcMain.handle('dialog:select-folder', async () => {
     const result = await dialog.showOpenDialog(mainWindow!, { properties: ['openDirectory'], title: 'Choose a folder to scan' });

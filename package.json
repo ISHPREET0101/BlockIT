@@ -1,13 +1,13 @@
 {
   "name": "blockit-storage-explorer",
-  "version": "1.8.2",
+  "version": "1.9.1",
   "description": "A friendly, private Windows storage explorer.",
   "main": "dist-electron/main.js",
   "author": "BlockIT",
   "license": "MIT",
   "scripts": {
     "dev": "npm run build:main && concurrently -k \"vite\" \"wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .\"",
-    "build:main": "node scripts/build-native.cjs && tsup electron/main.ts electron/preload.ts electron/scanner-worker.ts electron/query-worker.ts --format cjs --platform node --target node20 --out-dir dist-electron --external electron --external better-sqlite3",
+    "build:main": "node scripts/build-native.cjs && tsup electron/main.ts electron/preload.ts electron/scanner-worker.ts electron/query-worker.ts electron/explorer-worker.ts --format cjs --platform node --target node20 --out-dir dist-electron --external electron --external better-sqlite3",
     "build:renderer": "vite build",
     "build": "npm run typecheck && npm run build:main && npm run build:renderer",
     "generate:icon": "node scripts/generate-icon.cjs",
