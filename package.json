@@ -23,6 +23,8 @@
     "test:drive": "cross-env ELECTRON_RUN_AS_NODE=1 electron scripts/mft-scan-check.cjs",
     "bench:scan": "cross-env ELECTRON_RUN_AS_NODE=1 electron scripts/bench-scan.cjs",
     "test:ui": "electron scripts/smoke-ui.cjs && electron scripts/smoke-treemap.cjs && electron scripts/smoke-actions.cjs",
+    "test:explorer": "electron scripts/smoke-explorer.cjs && electron scripts/smoke-drive-scope.cjs",
+    "preview:explorer": "electron scripts/preview-explorer.cjs",
     "test:watch": "vitest",
     "package:win": "npm run generate:icon && npm run build && electron-builder --win nsis portable --x64",
     "postinstall": "electron-builder install-app-deps",

@@ -67,6 +67,8 @@ async function run() {
   await js('const input=document.querySelector(".map-size-filter input");Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,"value").set.call(input,"0");input.dispatchEvent(new Event("input",{bubbles:true}))');
   await js('Array.from(document.querySelectorAll(".map-segments button")).find(b=>b.getAttribute("aria-label")==="Show 1 levels").click()');
   await delay(500);
+  win.webContents.sendInputEvent({type:'mouseMove',x:0,y:0});
+  await delay(50);
   await js("const first=document.querySelector('.treemap-cell'); first.focus()");
   await delay(100);
   assert(await js("return document.querySelector('.map-details').textContent.includes('Games')"),'Focus shows metadata');
